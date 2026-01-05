@@ -105,17 +105,17 @@ namespace LAMMPS_NS
 			
 			PairCHIMES(class LAMMPS *);
 			
-			virtual ~PairCHIMES();
+			~PairCHIMES() override;
 			
 			// Functions that have been written
 
-			void   settings(int narg, char **arg);
-			void   init_style();	
-			void   coeff(int narg, char **arg);
-			void   allocate();
-			double init_one(int i, int j);	
-			void   compute(int eflag, int vflag);
-			void   build_mb_neighlists();
+			void   settings(int narg, char **arg) override;
+			void   init_style() override;
+			void   coeff(int narg, char **arg) override;
+			virtual void   allocate();
+			double init_one(int i, int j) override;
+			void   compute(int eflag, int vflag) override;
+			virtual void   build_mb_neighlists();
 		    inline double get_dist(int i, int j, double* dr);
 		    inline double get_dist(int i, int j);
 			void   set_chimes_type();

@@ -147,7 +147,7 @@ public:
         
     void init(int mpi_rank);
         
-    void read_parameters(string paramfile); 
+    virtual void read_parameters(string paramfile); 
         
     void compute_1B(const int typ_idx, double & energy );
         

@@ -1,0 +1,821 @@
+/*
+  ChIMES Calculator
+  Copyright (C) 2020 Rebecca K. Lindsey, Nir Goldman, and Laurence E. Fried
+  Contributing Author: Stan Moore (2025)
+*/
+
+#include<array>
+#include<vector>
+#include<iostream>
+#include<iomanip>
+#include<fstream>
+#include<string>
+#include<sstream>
+#include<cstdlib>
+#include<algorithm>
+#include<cmath>
+#include<map>
+
+using namespace std;
+
+#include "chimesFF_kokkos.h"
+
+/* ---------------------------------------------------------------------- */
+
+template<class DeviceType>
+chimesFFKokkos<DeviceType>::chimesFFKokkos
+{
+
+}
+
+/* ---------------------------------------------------------------------- */
+
+template<class DeviceType>
+chimesFFKokkos<DeviceType>::~chimesFFKokkos<DeviceType>()
+{
+
+}
+
+/* ---------------------------------------------------------------------- */
+
+template<class DeviceType>
+KOKKOS_INLINE_FUNCTION
+KK_FLOAT chimesFFKokkos<DeviceType>::dr2_3B(const KK_FLOAT *dr2, int i, int j, int k, int l)
+{
+  // Access the dr2 distance tensor for a 3 body interaction
+
+  return(dr2[i*CHDIM*3*CHDIM + j*3*CHDIM + k*CHDIM + l]);
+}
+
+/* ---------------------------------------------------------------------- */
+
+template<class DeviceType>
+KOKKOS_INLINE_FUNCTION
+KK_FLOAT chimesFFKokkos<DeviceType>::dr2_4B(const KK_FLOAT *dr2, int i, int j, int k, int l)
+{
+  // Access the dr2 distance tensor for a 4 body interaction
+
+  return(dr2[i*CHDIM*6*CHDIM + j*6*CHDIM + k*CHDIM + l]);
+}
+
+/* ---------------------------------------------------------------------- */
+
+template<class DeviceType>
+KOKKOS_INLINE_FUNCTION
+void chimesFFKokkos<DeviceType>::init_distance_tensor(KK_FLOAT *dr2, const vector<KK_FLOAT> & dr, int npairs)
+{
+  for (int i = 0; i < npairs; i++ )
+    for (int j = 0; j < CHDIM; j++ )
+      for (int k = 0; k < npairs; k++ )
+        for (int l = 0; l < CHDIM; l++ )
+          dr2[i* CHDIM * npairs * CHDIM + j * npairs * CHDIM + k * CHDIM + l] = dr[i*CHDIM+j] * dr[k*CHDIM+l];
+}
+
+/* ---------------------------------------------------------------------- */
+
+template<class DeviceType>
+KOKKOS_INLINE_FUNCTION
+void chimesFFKokkos<DeviceType>::compute_1B(const int typ_idx, KK_FLOAT & energy )
+{
+  // Compute 1b (input: a single atom type index... outputs (updates) energy
+
+  energy += d_energy_offsets[typ_idx];
+}
+
+/* ---------------------------------------------------------------------- */
+
+// Overload for calls from LAMMPS
+
+template<class DeviceType>
+KOKKOS_INLINE_FUNCTION
+void chimesFFKokkos<DeviceType>::compute_2B(const KK_FLOAT dx, const vector<KK_FLOAT> & dr, const vector<int> typ_idxs, vector<KK_FLOAT> & force, vector<KK_FLOAT> & stress, KK_FLOAT & energy, chimes2BTmp &tmp)
+{
+  KK_FLOAT dummy_force_scalar;
+  compute_2B(dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar);
+}
+
+/* ---------------------------------------------------------------------- */
+
+template<class DeviceType>
+KOKKOS_INLINE_FUNCTION
+void chimesFFKokkos<DeviceType>::compute_2B(const KK_FLOAT dx, const vector<KK_FLOAT> & dr, const vector<int> typ_idxs, vector<KK_FLOAT> & force, vector<KK_FLOAT> & stress, KK_FLOAT & energy, chimes2BTmp &tmp, KK_FLOAT & force_scalar_in)
+{
+  // Compute 2b (input: 2 atoms or distances, corresponding types... outputs (updates) force, acceleration, energy, stress
+  //
+  // Input parameters:
+  //
+  // dx: Scalar (pair distance)
+  // dr: 1d-Array (pair distance: [x, y, and z-component])
+  // Force: [natoms in interaction set][x,y, and z-component] *note
+  // Stress [sxx, sxy, sxz, syy, syz, szz]  *note
+  // Energy: Scalar; energy for interaction set
+  // Tmp: Temporary storage for calculation.
+
+  // Assumes atom indices start from zero
+  // Assumes distances are atom_2 - atom_1
+  //
+  // *note: force is a packed array of coordinates.
+
+  int pair_idx;
+  KK_FLOAT fcut;
+  KK_FLOAT fcutderiv;
+
+  // tmp.resize(poly_orders[0]+1);
+
+  // Use references for readability
+
+  vector<KK_FLOAT> &Tn = tmp.Tn;
+  vector<KK_FLOAT> &Tnd = tmp.Tnd;
+
+  pair_idx = atom_int_pair_map[typ_idxs[0]*natmtyps + typ_idxs[1]];
+
+  if (dx >= d_chimes_2b_cutoff(pair_idx,1))
+    return;
+
+  set_cheby_polys(Tn, Tnd, dx, morse_var[pair_idx], d_chimes_2b_cutoff(pair_idx,0), d_chimes_2b_cutoff(pair_idx,1), poly_orders[0]);
+
+  get_fcut(dx, d_chimes_2b_cutoff(pair_idx,1), fcut, fcutderiv);
+
+  KK_FLOAT dx_inv = (dx > 0.0 ) ? 1.0 / dx : 1e20;
+
+  for (int coeffs = 0; coeffs < ncoeffs_2b[pair_idx]; coeffs++) {
+    KK_FLOAT coeff_val = d_chimes_2b_params(pair_idx,coeffs);
+
+    energy += coeff_val * fcut * Tn[d_chimes_2b_pows(pair_idx,coeffs)+1];
+
+    KK_FLOAT deriv = fcut * Tnd[d_chimes_2b_pows(pair_idx,coeffs)+1]  + fcutderiv * Tn[d_chimes_2b_pows(pair_idx,coeffs)+1];
+
+    KK_FLOAT force_scalar = coeff_val * deriv * dx_inv;
+
+    force[0*CHDIM+0] += force_scalar * dr[0];
+    force[0*CHDIM+1] += force_scalar * dr[1];
+    force[0*CHDIM+2] += force_scalar * dr[2];
+
+    force[1*CHDIM+0] -= force_scalar * dr[0];
+    force[1*CHDIM+1] -= force_scalar * dr[1];
+    force[1*CHDIM+2] -= force_scalar * dr[2];
+
+    // xx xy xz yy yz zz
+    // 0  1  2  3  4  5
+
+    // xx xy xz yx yy yz zx zy zz
+    // 0  1  2  3  4  5  6  7  8
+    // *           *           *
+
+    stress[0] -= force_scalar * dr[0] * dr[0]; // xx tensor component
+    stress[1] -= force_scalar * dr[0] * dr[1]; // xy tensor component
+    stress[2] -= force_scalar * dr[0] * dr[2]; // xz tensor component
+    stress[3] -= force_scalar * dr[1] * dr[1]; // yy tensor component
+    stress[4] -= force_scalar * dr[1] * dr[2]; // yz tensor component
+    stress[5] -= force_scalar * dr[2] * dr[2]; // zz tensor component
+  }
+
+  KK_FLOAT E_penalty = 0.0;
+  KK_FLOAT force_scalar;
+  get_penalty(dx, pair_idx, E_penalty , force_scalar);
+
+  if (E_penalty > 0.0 )
+  {
+    energy += E_penalty;
+
+    force_scalar /= dx;
+
+    // Note: force_scalar is negative (LEF) 7/30/21
+
+    force[0*CHDIM+0] += force_scalar * dr[0];
+    force[0*CHDIM+1] += force_scalar * dr[1];
+    force[0*CHDIM+2] += force_scalar * dr[2];
+
+    force[1*CHDIM+0] -= force_scalar * dr[0];
+    force[1*CHDIM+1] -= force_scalar * dr[1];
+    force[1*CHDIM+2] -= force_scalar * dr[2];
+
+    // Update stress according to penalty force. (LEF) 07/30/21
+
+    stress[0] -= force_scalar * dr[0] * dr[0]; // xx tensor component
+    stress[1] -= force_scalar * dr[0] * dr[1]; // xy tensor component
+    stress[2] -= force_scalar * dr[0] * dr[2]; // xz tensor component
+    stress[3] -= force_scalar * dr[1] * dr[1]; // yy tensor component
+    stress[4] -= force_scalar * dr[1] * dr[2]; // yz tensor component
+    stress[5] -= force_scalar * dr[2] * dr[2]; // zz tensor component
+  }
+
+  force_scalar_in = force_scalar;
+}
+
+/* ---------------------------------------------------------------------- */
+
+// Overload for calls from LAMMPS
+
+template<class DeviceType>
+KOKKOS_INLINE_FUNCTION
+void chimesFFKokkos<DeviceType>::compute_3B(const vector<KK_FLOAT> & dx, const vector<KK_FLOAT> & dr, const vector<int> & typ_idxs, vector<KK_FLOAT> & force, vector<KK_FLOAT> & stress, KK_FLOAT & energy, chimes3BTmp &tmp)
+{
+  vector<KK_FLOAT> dummy_force_scalar(3);
+  compute_3B(dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar);
+}
+
+/* ---------------------------------------------------------------------- */
+
+template<class DeviceType>
+KOKKOS_INLINE_FUNCTION
+void chimesFFKokkos<DeviceType>::compute_3B(const vector<KK_FLOAT> & dx, const vector<KK_FLOAT> & dr, const vector<int> & typ_idxs, vector<KK_FLOAT> & force, vector<KK_FLOAT> & stress, KK_FLOAT & energy, chimes3BTmp &tmp, vector<KK_FLOAT> & force_scalar_in)
+{
+  // Compute 3b (input: 3 atoms or distances, corresponding types... outputs (updates) force, acceleration, energy, stress
+  //
+  // Input parameters:
+  //
+  // dx_ij: Scalar (pair distance)
+  // dr_ij: 1d-Array (pair distance: [x, y, and z-component])
+  // Force: [natoms in interaction set][x,y, and z-component] *note
+  // Stress [sxx, sxy, sxz, syy, syz, szz]
+  // Energy: Scalar; energy for interaction set
+  // Tmp: Temporary storage for 3-body interactions.
+
+  // Assumes atom indices start from zero
+  // Assumes distances are atom_2 - atom_1
+  //
+  // *note: force and dr are packed vectors of coordinates.
+
+  const int natoms = 3;                   // Number of atoms in an interaction set
+  const int npairs = natoms*(natoms-1)/2; // Number of pairs in an interaction set
+
+  // tmp.resize(poly_orders[1]);
+
+  vector<KK_FLOAT> &Tn_ij = tmp.Tn_ij;
+  vector<KK_FLOAT> &Tn_ik = tmp.Tn_ik;
+  vector<KK_FLOAT> &Tn_jk = tmp.Tn_jk;   // The Chebyshev polymonials
+  vector<KK_FLOAT> &Tnd_ij = tmp.Tnd_ij;
+  vector<KK_FLOAT> &Tnd_ik = tmp.Tnd_ik;
+  vector<KK_FLOAT> &Tnd_jk = tmp.Tnd_jk;  // The Chebyshev polymonial derivatives
+
+  // Avoid allocating vector quantities.  Heap memory allocation is slow on the GPU.
+  // fixed-length C arrays are allocated on the stack
+
+  KK_FLOAT fcut[npairs];
+  KK_FLOAT fcutderiv[npairs];
+  KK_FLOAT deriv[npairs];
+
+#if DEBUG == 1
+  if (dr.size() != 9 )
+  {
+    cout << "Error: dr should have length = 9.  Current length = " << dr.size() << endl;
+    exit(0);
+  }
+#endif
+
+  int type_idx = typ_idxs[0]*natmtyps*natmtyps + typ_idxs[1]*natmtyps + typ_idxs[2];
+  int tripidx = atom_int_trip_map[type_idx];
+
+  if (tripidx < 0) // Skipping an excluded interaction
+    return;
+
+  // Check whether cutoffs are within allowed ranges
+  vector<int> & mapped_pair_idx = pair_int_trip_map[type_idx];
+
+  KK_FLOAT cutoff_0 = d_chimes_3b_cutoff(tripidx,1,mapped_pair_idx[0]);
+  KK_FLOAT cutoff_00 = d_chimes_3b_cutoff(tripidx,0,mapped_pair_idx[0]);
+
+  if (dx[0] >= cutoff_0) // ij
+    return;
+
+  KK_FLOAT cutoff_1 = d_chimes_3b_cutoff(tripidx,1,mapped_pair_idx[1]);
+  KK_FLOAT cutoff_01 = d_chimes_3b_cutoff(tripidx,0,mapped_pair_idx[1]);
+
+  if (dx[1] >= cutoff_1) // ik
+    return;
+
+  KK_FLOAT cutoff_2 = d_chimes_3b_cutoff(tripidx,1,mapped_pair_idx[2]);
+  KK_FLOAT cutoff_02 = d_chimes_3b_cutoff(tripidx,0,mapped_pair_idx[2]);
+
+  if (dx[2] >= cutoff_2) // jk
+    return;
+
+ int pair_type_1 = atom_int_pair_map[typ_idxs[0]*natmtyps + typ_idxs[1]];;
+ int pair_type_2 = atom_int_pair_map[typ_idxs[0]*natmtyps + typ_idxs[2]];
+ int pair_type_3 = atom_int_pair_map[typ_idxs[1]*natmtyps + typ_idxs[2]];
+ int order = poly_orders[1];
+
+  // At this point, all distances are within allowed ranges. We can now proceed to the force/stress/energy calculation
+
+#ifdef USE_DISTANCE_TENSOR
+  // Tensor product of displacement vectors
+
+  KK_FLOAT dr2[CHDIM*CHDIM*npairs*npairs];
+  init_distance_tensor(dr2, dr, npairs);
+#endif
+
+  // Set up the polynomials
+
+  set_cheby_polys(Tn_ij, Tnd_ij, dx[0], morse_var[pair_type_1], cutoff_00, cutoff_0, order);
+  set_cheby_polys(Tn_ik, Tnd_ik, dx[1], morse_var[pair_type_2], cutoff_01, cutoff_1, order);
+  set_cheby_polys(Tn_jk, Tnd_jk, dx[2], morse_var[pair_type_3], cutoff_02, cutoff_2, order);
+
+  // Set up the smoothing functions
+
+  get_fcut(dx[0], cutoff_0, fcut[0], fcutderiv[0]);
+  get_fcut(dx[1], cutoff_1, fcut[1], fcutderiv[1]);
+  get_fcut(dx[2], cutoff_2, fcut[2], fcutderiv[2]);
+  KK_FLOAT fcut_all = fcut[0] * fcut[1] * fcut[2];
+
+  // Product of 2 fcuts divided by dx. Index i = product of all fcuts except i
+
+  KK_FLOAT fcut_2[npairs];
+  fcut_2[0] = fcut[1] * fcut[2] / dx[0];
+  fcut_2[1] = fcut[0] * fcut[2] / dx[1];
+  fcut_2[2] = fcut[0] * fcut[1] / dx[2];
+
+  // Start the force/stress/energy calculation
+
+  KK_FLOAT coeff;
+  int powers[npairs];
+  KK_FLOAT force_scalar[npairs];
+
+  KK_FLOAT fscalar_0 = force_scalar[0];
+  KK_FLOAT fscalar_1 = force_scalar[1];
+  KK_FLOAT fscalar_2 = force_scalar[2];
+
+  for (int coeffs = 0; coeffs < ncoeffs_3b[tripidx]; coeffs++) {
+    coeff = d_chimes_3b_params(tripidx,coeffs);
+
+    powers[0] = d_chimes_3b_powers(tripidx,coeffs,mapped_pair_idx[0]);
+    powers[1] = d_chimes_3b_powers(tripidx,coeffs,mapped_pair_idx[1]);
+    powers[2] = d_chimes_3b_powers(tripidx,coeffs,mapped_pair_idx[2]);
+
+    energy += coeff * fcut_all * Tn_ij[powers[0]] * Tn_ik[powers[1]] * Tn_jk[powers[2]];
+
+    deriv[0] = fcut[0] * Tnd_ij[powers[0]] + fcutderiv[0] * Tn_ij[powers[0]];
+    deriv[1] = fcut[1] * Tnd_ik[powers[1]] + fcutderiv[1] * Tn_ik[powers[1]];
+    deriv[2] = fcut[2] * Tnd_jk[powers[2]] + fcutderiv[2] * Tn_jk[powers[2]];
+
+    force_scalar[0] = coeff * deriv[0] * fcut_2[0] * Tn_ik[powers[1]] * Tn_jk[powers[2]];
+    force_scalar[1] = coeff * deriv[1] * fcut_2[1] * Tn_ij[powers[0]] * Tn_jk[powers[2]];
+    force_scalar[2] = coeff * deriv[2] * fcut_2[2] * Tn_ij[powers[0]] * Tn_ik[powers[1]];
+
+    fscalar_0 = force_scalar[0];
+    fscalar_1 = force_scalar[1];
+    fscalar_2 = force_scalar[2];
+
+    // Accumulate forces/stresses on/from the ij pair
+
+    force[0*CHDIM+0] += fscalar_0 * dr[0*CHDIM+0];
+    force[0*CHDIM+1] += fscalar_0 * dr[0*CHDIM+1];
+    force[0*CHDIM+2] += fscalar_0 * dr[0*CHDIM+2];
+
+    force[1*CHDIM+0] -= fscalar_0 * dr[0*CHDIM+0];
+    force[1*CHDIM+1] -= fscalar_0 * dr[0*CHDIM+1];
+    force[1*CHDIM+2] -= fscalar_0 * dr[0*CHDIM+2];
+
+    // dr2_3B looks like a function call, but the optimizer should remove it entirely
+#ifdef USE_DISTANCE_TENSOR
+    // New stress code
+
+    stress[0] -= fscalar_0 * dr2_3B(dr2,0,0,0,0); // xx tensor component
+    stress[1] -= fscalar_0 * dr2_3B(dr2,0,0,0,1); // xy tensor component
+    stress[2] -= fscalar_0 * dr2_3B(dr2,0,0,0,2); // xz tensor component
+    stress[3] -= fscalar_0 * dr2_3B(dr2,0,1,0,1); // yy tensor component
+    stress[4] -= fscalar_0 * dr2_3B(dr2,0,1,0,2); // yz tensor component
+    stress[5] -= fscalar_0 * dr2_3B(dr2,0,2,0,2); // zz tensor component
+
+#else
+    stress[0] -= fscalar_0 * dr[0*CHDIM+0] * dr[0*CHDIM+0]; // xx tensor component
+    stress[1] -= fscalar_0 * dr[0*CHDIM+0] * dr[0*CHDIM+1]; // xy tensor component
+    stress[2] -= fscalar_0 * dr[0*CHDIM+0] * dr[0*CHDIM+2]; // xz tensor component
+    stress[3] -= fscalar_0 * dr[0*CHDIM+1] * dr[0*CHDIM+1]; // yy tensor component
+    stress[4] -= fscalar_0 * dr[0*CHDIM+1] * dr[0*CHDIM+2]; // yz tensor component
+    stress[5] -= fscalar_0 * dr[0*CHDIM+2] * dr[0*CHDIM+2]; // zz tensor component
+#endif
+
+    // Accumulate forces/stresses on/from the ik pair
+
+    force[0*CHDIM+0] += fscalar_1 * dr[1*CHDIM+0];
+    force[0*CHDIM+1] += fscalar_1 * dr[1*CHDIM+1];
+    force[0*CHDIM+2] += fscalar_1 * dr[1*CHDIM+2];
+
+    force[2*CHDIM+0] -= fscalar_1 * dr[1*CHDIM+0];
+    force[2*CHDIM+1] -= fscalar_1 * dr[1*CHDIM+1];
+    force[2*CHDIM+2] -= fscalar_1 * dr[1*CHDIM+2];
+
+#ifdef USE_DISTANCE_TENSOR
+    stress[0] -= fscalar_1 * dr2_3B(dr2,1,0,1,0); // xx tensor component
+    stress[1] -= fscalar_1 * dr2_3B(dr2,1,0,1,1); // xy tensor component
+    stress[2] -= fscalar_1 * dr2_3B(dr2,1,0,1,2); // xz tensor component
+    stress[3] -= fscalar_1 * dr2_3B(dr2,1,1,1,1); // yy tensor component
+    stress[4] -= fscalar_1 * dr2_3B(dr2,1,1,1,2); // yz tensor component
+    stress[5] -= fscalar_1 * dr2_3B(dr2,1,2,1,2); // zz tensor component
+#else
+    stress[0] -= fscalar_1 * dr[1*CHDIM+0] * dr[1*CHDIM+0]; // xx tensor component
+    stress[1] -= fscalar_1 * dr[1*CHDIM+0] * dr[1*CHDIM+1]; // xy tensor component
+    stress[2] -= fscalar_1 * dr[1*CHDIM+0] * dr[1*CHDIM+2]; // xz tensor component
+    stress[3] -= fscalar_1 * dr[1*CHDIM+1] * dr[1*CHDIM+1]; // yy tensor component
+    stress[4] -= fscalar_1 * dr[1*CHDIM+1] * dr[1*CHDIM+2]; // yz tensor component
+    stress[5] -= fscalar_1 * dr[1*CHDIM+2] * dr[1*CHDIM+2]; // zz tensor component
+#endif
+
+    // Accumulate forces/stresses on/from the jk pair
+
+    force[1*CHDIM+0] += fscalar_2 * dr[2*CHDIM+0];
+    force[1*CHDIM+1] += fscalar_2 * dr[2*CHDIM+1];
+    force[1*CHDIM+2] += fscalar_2 * dr[2*CHDIM+2];
+
+    force[2*CHDIM+0] -= fscalar_2 * dr[2*CHDIM+0];
+    force[2*CHDIM+1] -= fscalar_2 * dr[2*CHDIM+1];
+    force[2*CHDIM+2] -= fscalar_2 * dr[2*CHDIM+2];
+
+#ifdef USE_DISTANCE_TENSOR
+    stress[0] -= fscalar_2 * dr2_3B(dr2,2,0,2,0); // xx tensor component
+    stress[1] -= fscalar_2 * dr2_3B(dr2,2,0,2,1); // xy tensor component
+    stress[2] -= fscalar_2 * dr2_3B(dr2,2,0,2,2); // xz tensor component
+    stress[3] -= fscalar_2 * dr2_3B(dr2,2,1,2,1); // yy tensor component
+    stress[4] -= fscalar_2 * dr2_3B(dr2,2,1,2,2); // yz tensor component
+    stress[5] -= fscalar_2 * dr2_3B(dr2,2,2,2,2); // zz tensor component
+#else
+    stress[0] -= fscalar_2 * dr[2*CHDIM+0] * dr[2*CHDIM+0]; // xx tensor component
+    stress[1] -= fscalar_2 * dr[2*CHDIM+0] * dr[2*CHDIM+1]; // xy tensor component
+    stress[2] -= fscalar_2 * dr[2*CHDIM+0] * dr[2*CHDIM+2]; // xz tensor component
+    stress[3] -= fscalar_2 * dr[2*CHDIM+1] * dr[2*CHDIM+1]; // yy tensor component
+    stress[4] -= fscalar_2 * dr[2*CHDIM+1] * dr[2*CHDIM+2]; // yz tensor component
+    stress[5] -= fscalar_2 * dr[2*CHDIM+2] * dr[2*CHDIM+2]; // zz tensor component
+#endif
+  }
+
+  force_scalar_in[0] = force_scalar[0];
+  force_scalar_in[1] = force_scalar[1];
+  force_scalar_in[2] = force_scalar[2];
+
+  return;
+}
+
+/* ---------------------------------------------------------------------- */
+
+template<class DeviceType>
+KOKKOS_INLINE_FUNCTION
+void chimesFFKokkos<DeviceType>::compute_4B(const vector<KK_FLOAT> & dx, const vector<KK_FLOAT> & dr, const vector<int> & typ_idxs, vector<KK_FLOAT> & force, vector<KK_FLOAT> & stress, KK_FLOAT & energy, chimes4BTmp &tmp)
+{
+  vector<KK_FLOAT> dummy_force_scalar(6);
+  compute_4B(dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar);
+}
+
+/* ---------------------------------------------------------------------- */
+
+template<class DeviceType>
+KOKKOS_INLINE_FUNCTION
+void chimesFFKokkos<DeviceType>::compute_4B(const vector<KK_FLOAT> & dx, const vector<KK_FLOAT> & dr, const vector<int> & typ_idxs, vector<KK_FLOAT> & force, vector<KK_FLOAT> & stress, KK_FLOAT & energy, chimes4BTmp &tmp, vector<KK_FLOAT> & force_scalar_in)
+{
+  // Compute 3b (input: 3 atoms or distances, corresponding types... outputs (updates) force, acceleration, energy, stress
+  //
+  // Input parameters:
+  //
+  // dx_ij: Scalar (pair distance)
+  // dr_ij: 1d-Array (pair distance: [x, y, and z-component])
+  // Force: [natoms in interaction set][x,y, and z-component] *note
+  // Stress [sxx, sxy, sxz, syy, syz, szz]
+  // Energy: Scalar; energy for interaction set
+  // Tmp: Structure containing temporary data.
+  // Assumes atom indices start from zero
+  // Assumes distances are atom_2 - atom_1
+  //
+  // *note: force and dr are packed vectors of coordinates.
+
+  const int natoms = 4;                     // Number of atoms in an interaction set
+  const int npairs = natoms*(natoms-1)/2;    // Number of pairs in an interaction set
+
+  KK_FLOAT fcut[npairs];
+  KK_FLOAT fcutderiv[npairs];
+  KK_FLOAT deriv[npairs];
+
+#if DEBUG == 1
+  if (force.size() != CHDIM * natoms ) {
+    cout << "Error: force vector had incorrect dimension of " << force.size() << endl;
+    exit(1);
+  }
+#endif
+
+  vector<KK_FLOAT> &Tn_ij = tmp.Tn_ij;
+  vector<KK_FLOAT> &Tn_ik = tmp.Tn_ik;
+  vector<KK_FLOAT> &Tn_il = tmp.Tn_il;
+  vector<KK_FLOAT> &Tn_jk = tmp.Tn_jk;
+  vector<KK_FLOAT> &Tn_jl = tmp.Tn_jl;
+  vector<KK_FLOAT> &Tn_kl = tmp.Tn_kl;
+
+  vector<KK_FLOAT> &Tnd_ij = tmp.Tnd_ij;
+  vector<KK_FLOAT> &Tnd_ik = tmp.Tnd_ik;
+  vector<KK_FLOAT> &Tnd_il = tmp.Tnd_il;
+  vector<KK_FLOAT> &Tnd_jk = tmp.Tnd_jk;
+  vector<KK_FLOAT> &Tnd_jl = tmp.Tnd_jl;
+  vector<KK_FLOAT> &Tnd_kl = tmp.Tnd_kl;
+
+  int idx = typ_idxs[0]*natmtyps*natmtyps*natmtyps
+      + typ_idxs[1]*natmtyps*natmtyps + typ_idxs[2]*natmtyps + typ_idxs[3];
+
+  int quadidx = d_atom_int_quad_map[idx];
+
+  if (quadidx < 0) // Skipping an excluded interaction
+    return;
+
+  auto &d_mapped_pair_idx = d_pair_int_quad_map[idx];
+
+  // Check whether cutoffs are within allowed ranges
+/*
+  for (int i=0; i<npairs; i++)
+      if (dx[i] >= d_chimes_4b_cutoff(quadidx,1,mapped_pair_idx[i]))
+          return;
+*/
+  // These speed up fcut calculations by a LOT
+
+  KK_FLOAT cutoff_0 = d_chimes_4b_cutoff(quadidx,1,d_mapped_pair_idx[0]);
+  KK_FLOAT cutoff_00 = d_chimes_4b_cutoff(quadidx,0,d_mapped_pair_idx[0]);
+
+  if (dx[0] >= cutoff_0) // ij
+    return;
+
+  KK_FLOAT cutoff_1 = d_chimes_4b_cutoff(quadidx,1,d_mapped_pair_idx[1]);
+  KK_FLOAT cutoff_01 = d_chimes_4b_cutoff(quadidx,0,d_mapped_pair_idx[1]);
+
+  if (dx[1] >= cutoff_1) // ik
+    return;
+
+  KK_FLOAT cutoff_2 = d_chimes_4b_cutoff(quadidx,1,d_mapped_pair_idx[2]);
+  KK_FLOAT cutoff_02 = d_chimes_4b_cutoff(quadidx,0,d_mapped_pair_idx[2]);
+
+  if (dx[2] >= cutoff_2) // il
+    return;
+
+  KK_FLOAT cutoff_3 = d_chimes_4b_cutoff(quadidx,1,mapped_pair_idx[3]);
+  KK_FLOAT cutoff_03 = d_chimes_4b_cutoff(quadidx,0,mapped_pair_idx[3]);
+
+  if (dx[3] >= cutoff_3) // jk
+      return;
+
+  KK_FLOAT cutoff_4 = d_chimes_4b_cutoff(quadidx,1,mapped_pair_idx[4]);
+  KK_FLOAT cutoff_04 = d_chimes_4b_cutoff(quadidx,0,mapped_pair_idx[4]);
+
+  if (dx[4] >= cutoff_4) // jl
+    return;
+
+  KK_FLOAT cutoff_5 = d_chimes_4b_cutoff(quadidx,1,mapped_pair_idx[5]);
+  KK_FLOAT cutoff_05 = d_chimes_4b_cutoff(quadidx,0,mapped_pair_idx[5]);
+
+  if (dx[5] >= cutoff_5) // kl
+    return;
+
+  // At this point, all distances are within allowed ranges. We can now proceed to the force/stress/energy calculation
+
+  int pair_type_1 = atom_int_pair_map[typ_idxs[0]*natmtyps + typ_idxs[1]];
+  int pair_type_2 = atom_int_pair_map[typ_idxs[0]*natmtyps + typ_idxs[2]];
+  int pair_type_3 = atom_int_pair_map[typ_idxs[0]*natmtyps + typ_idxs[3]];
+  int pair_type_4 = atom_int_pair_map[typ_idxs[1]*natmtyps + typ_idxs[2]];
+  int pair_type_5 = atom_int_pair_map[typ_idxs[1]*natmtyps + typ_idxs[3]];
+  int pair_type_6 = atom_int_pair_map[typ_idxs[2]*natmtyps + typ_idxs[3]];
+  int order = poly_orders[2];
+
+  // Set up the polynomials
+
+  set_cheby_polys(Tn_ij, Tnd_ij, dx[0], morse_var[pair_type_1], cutoff_00, cutoff_0, order);
+  set_cheby_polys(Tn_ik, Tnd_ik, dx[1], morse_var[pair_type_2], cutoff_01, cutoff_1, order);
+  set_cheby_polys(Tn_il, Tnd_il, dx[2], morse_var[pair_type_3], cutoff_02, cutoff_2, order);
+  set_cheby_polys(Tn_jk, Tnd_jk, dx[3], morse_var[pair_type_4], cutoff_03, cutoff_3, order);
+  set_cheby_polys(Tn_jl, Tnd_jl, dx[4], morse_var[pair_type_5], cutoff_04, cutoff_4, order);
+  set_cheby_polys(Tn_kl, Tnd_kl, dx[5], morse_var[pair_type_6], cutoff_05, cutoff_5, order);
+
+#ifdef USE_DISTANCE_TENSOR
+  // Tensor product of displacement vectors
+
+  KK_FLOAT dr2[CHDIM*CHDIM*npairs*npairs];
+  init_distance_tensor(dr2, dr, npairs);
+#endif
+
+
+  // Set up the smoothing functions
+/*
+  for (int i=0; i<npairs; i++)
+      get_fcut(dx[i], d_chimes_4b_cutoff(quadidx,1,mapped_pair_idx[i]], fcut[i], fcutderiv[i));
+*/
+
+  get_fcut(dx[0], cutoff_0, fcut[0], fcutderiv[0]);
+  get_fcut(dx[1], cutoff_1, fcut[1], fcutderiv[1]);
+  get_fcut(dx[2], cutoff_2, fcut[2], fcutderiv[2]);
+  get_fcut(dx[3], cutoff_3, fcut[3], fcutderiv[3]);
+  get_fcut(dx[4], cutoff_4, fcut[4], fcutderiv[4]);
+  get_fcut(dx[5], cutoff_5, fcut[5], fcutderiv[5]);
+
+  // Product of all 6 fcuts
+
+  KK_FLOAT fcut_all = fcut[0] * fcut[1] * fcut[2] * fcut[3] * fcut[4] * fcut[5] ;
+
+  // Product of 5 fcuts divided by dx
+
+  KK_FLOAT fcut_5[npairs]; // not c++ compliant
+  fcut_5[0] = fcut[1] * fcut[2] * fcut[3] * fcut[4] * fcut[5] / dx[0];
+  fcut_5[1] = fcut[0] * fcut[2] * fcut[3] * fcut[4] * fcut[5] / dx[1];
+  fcut_5[2] = fcut[0] * fcut[1] * fcut[3] * fcut[4] * fcut[5] / dx[2];
+  fcut_5[3] = fcut[0] * fcut[1] * fcut[2] * fcut[4] * fcut[5] / dx[3];
+  fcut_5[4] = fcut[0] * fcut[1] * fcut[2] * fcut[3] * fcut[5] / dx[4];
+  fcut_5[5] = fcut[0] * fcut[1] * fcut[2] * fcut[3] * fcut[4] / dx[5];
+
+  // Start the force/stress/energy calculation
+
+  KK_FLOAT coeff;
+  int powers[npairs]; //// not c++ compliant
+  KK_FLOAT force_scalar[npairs]; //// not c++ compliant
+
+  KK_FLOAT fscalar_0 = force_scalar[0];
+  KK_FLOAT fscalar_1 = force_scalar[1];
+  KK_FLOAT fscalar_2 = force_scalar[2];
+  KK_FLOAT fscalar_3 = force_scalar[3];
+  KK_FLOAT fscalar_4 = force_scalar[4];
+  KK_FLOAT fscalar_5 = force_scalar[5];
+
+  for (int coeffs = 0; coeffs < d_ncoeffs_4b[quadidx]; coeffs++) {
+    coeff = d_chimes_4b_params(quadidx,coeffs);
+
+    for (int i = 0; i < npairs; i++)
+      powers[i] = d_d_chimes_4b_powers(quadidx,coeffs,mapped_pair_idx[i]);
+
+    KK_FLOAT Tn_ij_ik_il = Tn_ij[powers[0]] * Tn_ik[powers[1]] * Tn_il[powers[2]];
+    KK_FLOAT Tn_jk_jl = Tn_jk[powers[3]] * Tn_jl[powers[4]];
+    KK_FLOAT Tn_kl_5 = Tn_kl[powers[5]];
+
+    energy += coeff * fcut_all * Tn_ij_ik_il * Tn_jk_jl * Tn_kl_5;
+
+    deriv[0] = fcut[0] * Tnd_ij[powers[0]] + fcutderiv[0] * Tn_ij[powers[0]];
+    deriv[1] = fcut[1] * Tnd_ik[powers[1]] + fcutderiv[1] * Tn_ik[powers[1]];
+    deriv[2] = fcut[2] * Tnd_il[powers[2]] + fcutderiv[2] * Tn_il[powers[2]];
+    deriv[3] = fcut[3] * Tnd_jk[powers[3]] + fcutderiv[3] * Tn_jk[powers[3]];
+    deriv[4] = fcut[4] * Tnd_jl[powers[4]] + fcutderiv[4] * Tn_jl[powers[4]];
+    deriv[5] = fcut[5] * Tnd_kl[powers[5]] + fcutderiv[5] * Tn_kl[powers[5]];
+
+    force_scalar[0] = coeff * deriv[0] * fcut_5[0] * Tn_ik[powers[1]] * Tn_il[powers[2]] * Tn_jk_jl * Tn_kl_5;
+    force_scalar[1] = coeff * deriv[1] * fcut_5[1] * Tn_ij[powers[0]] * Tn_il[powers[2]] * Tn_jk_jl * Tn_kl_5;
+    force_scalar[2] = coeff * deriv[2] * fcut_5[2] * Tn_ij[powers[0]] * Tn_ik[powers[1]] * Tn_jk_jl * Tn_kl_5;
+    force_scalar[3] = coeff * deriv[3] * fcut_5[3] * Tn_ij_ik_il * Tn_jl[powers[4]] * Tn_kl_5;
+    force_scalar[4] = coeff * deriv[4] * fcut_5[4] * Tn_ij_ik_il * Tn_jk[powers[3]] * Tn_kl_5;
+    force_scalar[5] = coeff * deriv[5] * fcut_5[5] * Tn_ij_ik_il * Tn_jk_jl;
+
+    fscalar_0 = force_scalar[0];
+    fscalar_1 = force_scalar[1];
+    fscalar_2 = force_scalar[2];
+    fscalar_3 = force_scalar[3];
+    fscalar_4 = force_scalar[4];
+    fscalar_5 = force_scalar[5];
+
+    // Accumulate forces/stresses on/from the ij pair
+
+    force[0*CHDIM+0] += fscalar_0 * dr[0*CHDIM+0];
+    force[0*CHDIM+1] += fscalar_0 * dr[0*CHDIM+1];
+    force[0*CHDIM+2] += fscalar_0 * dr[0*CHDIM+2];
+
+    force[1*CHDIM+0] -= fscalar_0 * dr[0*CHDIM+0];
+    force[1*CHDIM+1] -= fscalar_0 * dr[0*CHDIM+1];
+    force[1*CHDIM+2] -= fscalar_0 * dr[0*CHDIM+2];
+
+#ifdef USE_DISTANCE_TENSOR
+    stress[0] -= fscalar_0 * dr2_4B(dr2,0,0,0,0); // xx tensor component
+    stress[1] -= fscalar_0 * dr2_4B(dr2,0,0,0,1); // xy tensor component
+    stress[2] -= fscalar_0 * dr2_4B(dr2,0,0,0,2); // xz tensor component
+    stress[3] -= fscalar_0 * dr2_4B(dr2,0,1,0,1); // yy tensor component
+    stress[4] -= fscalar_0 * dr2_4B(dr2,0,1,0,2); // yz tensor component
+    stress[5] -= fscalar_0 * dr2_4B(dr2,0,2,0,2); // zz tensor component
+#else
+    stress[0] -= fscalar_0 * dr[0*CHDIM+0] * dr[0*CHDIM+0]; // xx tensor component
+    stress[1] -= fscalar_0 * dr[0*CHDIM+0] * dr[0*CHDIM+1]; // xy tensor component
+    stress[2] -= fscalar_0 * dr[0*CHDIM+0] * dr[0*CHDIM+2]; // xz tensor component
+    stress[3] -= fscalar_0 * dr[0*CHDIM+1] * dr[0*CHDIM+1]; // yy tensor component
+    stress[4] -= fscalar_0 * dr[0*CHDIM+1] * dr[0*CHDIM+2]; // yz tensor component
+    stress[5] -= fscalar_0 * dr[0*CHDIM+2] * dr[0*CHDIM+2]; // zz tensor component
+#endif
+
+    // Accumulate forces/stresses on/from the ik pair
+
+    force[0*CHDIM+0] += fscalar_1 * dr[1*CHDIM+0];
+    force[0*CHDIM+1] += fscalar_1 * dr[1*CHDIM+1];
+    force[0*CHDIM+2] += fscalar_1 * dr[1*CHDIM+2];
+    force[2*CHDIM+0] -= fscalar_1 * dr[1*CHDIM+0];
+    force[2*CHDIM+1] -= fscalar_1 * dr[1*CHDIM+1];
+    force[2*CHDIM+2] -= fscalar_1 * dr[1*CHDIM+2];
+
+#if USE_DISTANCE_TENSOR
+    stress[0] -= fscalar_1 * dr2_4B(dr2,1,0,1,0); // xx tensor component
+    stress[1] -= fscalar_1 * dr2_4B(dr2,1,0,1,1); // xy tensor component
+    stress[2] -= fscalar_1 * dr2_4B(dr2,1,0,1,2); // xz tensor component
+    stress[3] -= fscalar_1 * dr2_4B(dr2,1,1,1,1); // yy tensor component
+    stress[4] -= fscalar_1 * dr2_4B(dr2,1,1,1,2); // yz tensor component
+    stress[5] -= fscalar_1 * dr2_4B(dr2,1,2,1,2); // zz tensor component
+#else
+    stress[0] -= fscalar_1 * dr[1*CHDIM+0] * dr[1*CHDIM+0]; // xx tensor component
+    stress[1] -= fscalar_1 * dr[1*CHDIM+0] * dr[1*CHDIM+1]; // xy tensor component
+    stress[2] -= fscalar_1 * dr[1*CHDIM+0] * dr[1*CHDIM+2]; // xz tensor component
+    stress[3] -= fscalar_1 * dr[1*CHDIM+1] * dr[1*CHDIM+1]; // yy tensor component
+    stress[4] -= fscalar_1 * dr[1*CHDIM+1] * dr[1*CHDIM+2]; // yz tensor component
+    stress[5] -= fscalar_1 * dr[1*CHDIM+2] * dr[1*CHDIM+2]; // zz tensor component
+#endif
+
+    // Accumulate forces/stresses on/from the il pair
+
+    force[0*CHDIM+0] += fscalar_2 * dr[2*CHDIM+0];
+    force[0*CHDIM+1] += fscalar_2 * dr[2*CHDIM+1];
+    force[0*CHDIM+2] += fscalar_2 * dr[2*CHDIM+2];
+    force[3*CHDIM+0] -= fscalar_2 * dr[2*CHDIM+0];
+    force[3*CHDIM+1] -= fscalar_2 * dr[2*CHDIM+1];
+    force[3*CHDIM+2] -= fscalar_2 * dr[2*CHDIM+2];
+
+#ifdef USE_DISTANCE_TENSOR
+    stress[0] -= fscalar_2 * dr2_4B(dr2,2,0,2,0); // xx tensor component
+    stress[1] -= fscalar_2 * dr2_4B(dr2,2,0,2,1); // xy tensor component
+    stress[2] -= fscalar_2 * dr2_4B(dr2,2,0,2,2); // xz tensor component
+    stress[3] -= fscalar_2 * dr2_4B(dr2,2,1,2,1); // yy tensor component
+    stress[4] -= fscalar_2 * dr2_4B(dr2,2,1,2,2); // yz tensor component
+    stress[5] -= fscalar_2 * dr2_4B(dr2,2,2,2,2); // zz tensor component
+#else
+    stress[0] -= fscalar_2 * dr[2*CHDIM+0] * dr[2*CHDIM+0]; // xx tensor component
+    stress[1] -= fscalar_2 * dr[2*CHDIM+0] * dr[2*CHDIM+1]; // xy tensor component
+    stress[2] -= fscalar_2 * dr[2*CHDIM+0] * dr[2*CHDIM+2]; // xz tensor component
+    stress[3] -= fscalar_2 * dr[2*CHDIM+1] * dr[2*CHDIM+1]; // yy tensor component
+    stress[4] -= fscalar_2 * dr[2*CHDIM+1] * dr[2*CHDIM+2]; // yz tensor component
+    stress[5] -= fscalar_2 * dr[2*CHDIM+2] * dr[2*CHDIM+2]; // zz tensor component
+#endif
+
+    // Accumulate forces/stresses on/from the jk pair
+
+    force[1*CHDIM+0] += fscalar_3 * dr[3*CHDIM+0];
+    force[1*CHDIM+1] += fscalar_3 * dr[3*CHDIM+1];
+    force[1*CHDIM+2] += fscalar_3 * dr[3*CHDIM+2];
+
+    force[2*CHDIM+0] -= fscalar_3 * dr[3*CHDIM+0];
+    force[2*CHDIM+1] -= fscalar_3 * dr[3*CHDIM+1];
+    force[2*CHDIM+2] -= fscalar_3 * dr[3*CHDIM+2];
+
+#ifdef USE_DISTANCE_TENSOR
+    stress[0] -= fscalar_3 * dr2_4B(dr2,3,0,3,0); // xx tensor component
+    stress[1] -= fscalar_3 * dr2_4B(dr2,3,0,3,1); // xy tensor component
+    stress[2] -= fscalar_3 * dr2_4B(dr2,3,0,3,2); // xz tensor component
+    stress[3] -= fscalar_3 * dr2_4B(dr2,3,1,3,1); // yy tensor component
+    stress[4] -= fscalar_3 * dr2_4B(dr2,3,1,3,2); // yz tensor component
+    stress[5] -= fscalar_3 * dr2_4B(dr2,3,2,3,2); // zz tensor component
+#else
+    stress[0] -= fscalar_3 * dr[3*CHDIM+0] * dr[3*CHDIM+0]; // xx tensor component
+    stress[1] -= fscalar_3 * dr[3*CHDIM+0] * dr[3*CHDIM+1]; // xy tensor component
+    stress[2] -= fscalar_3 * dr[3*CHDIM+0] * dr[3*CHDIM+2]; // xz tensor component
+    stress[3] -= fscalar_3 * dr[3*CHDIM+1] * dr[3*CHDIM+1]; // yy tensor component
+    stress[4] -= fscalar_3 * dr[3*CHDIM+1] * dr[3*CHDIM+2]; // yz tensor component
+    stress[5] -= fscalar_3 * dr[3*CHDIM+2] * dr[3*CHDIM+2]; // zz tensor component
+#endif
+
+    // Accumulate forces/stresses on/from the jl pair
+
+    force[1*CHDIM+0] += fscalar_4 * dr[4*CHDIM+0];
+    force[1*CHDIM+1] += fscalar_4 * dr[4*CHDIM+1];
+    force[1*CHDIM+2] += fscalar_4 * dr[4*CHDIM+2];
+
+    force[3*CHDIM+0] -= fscalar_4 * dr[4*CHDIM+0];
+    force[3*CHDIM+1] -= fscalar_4 * dr[4*CHDIM+1];
+    force[3*CHDIM+2] -= fscalar_4 * dr[4*CHDIM+2];
+
+#ifdef USE_DISTANCE_TENSOR
+    stress[0] -= fscalar_4 * dr2_4B(dr2,4,0,4,0); // xx tensor component
+    stress[1] -= fscalar_4 * dr2_4B(dr2,4,0,4,1); // xy tensor component
+    stress[2] -= fscalar_4 * dr2_4B(dr2,4,0,4,2); // xz tensor component
+    stress[3] -= fscalar_4 * dr2_4B(dr2,4,1,4,1); // yy tensor component
+    stress[4] -= fscalar_4 * dr2_4B(dr2,4,1,4,2); // yz tensor component
+    stress[5] -= fscalar_4 * dr2_4B(dr2,4,2,4,2); // zz tensor component
+#else
+    stress[0] -= fscalar_4 * dr[4*CHDIM+0] * dr[4*CHDIM+0]; // xx tensor component
+    stress[1] -= fscalar_4 * dr[4*CHDIM+0] * dr[4*CHDIM+1]; // xy tensor component
+    stress[2] -= fscalar_4 * dr[4*CHDIM+0] * dr[4*CHDIM+2]; // xz tensor component
+    stress[3] -= fscalar_4 * dr[4*CHDIM+1] * dr[4*CHDIM+1]; // yy tensor component
+    stress[4] -= fscalar_4 * dr[4*CHDIM+1] * dr[4*CHDIM+2]; // yz tensor component
+    stress[5] -= fscalar_4 * dr[4*CHDIM+2] * dr[4*CHDIM+2]; // zz tensor component
+#endif
+    // Accumulate forces/stresses on/from the kl pair
+
+    force[2*CHDIM+0] += fscalar_5 * dr[5*CHDIM+0];
+    force[2*CHDIM+1] += fscalar_5 * dr[5*CHDIM+1];
+    force[2*CHDIM+2] += fscalar_5 * dr[5*CHDIM+2];
+    force[3*CHDIM+0] -= fscalar_5 * dr[5*CHDIM+0];
+    force[3*CHDIM+1] -= fscalar_5 * dr[5*CHDIM+1];
+    force[3*CHDIM+2] -= fscalar_5 * dr[5*CHDIM+2];
+
+#ifdef USE_DISTANCE_TENSOR
+    stress[0] -= fscalar_5 * dr2_4B(dr2,5,0,5,0); // xx tensor component
+    stress[1] -= fscalar_5 * dr2_4B(dr2,5,0,5,1); // xy tensor component
+    stress[2] -= fscalar_5 * dr2_4B(dr2,5,0,5,2); // xz tensor component
+    stress[3] -= fscalar_5 * dr2_4B(dr2,5,1,5,1); // yy tensor component
+    stress[4] -= fscalar_5 * dr2_4B(dr2,5,1,5,2); // yz tensor component
+    stress[5] -= fscalar_5 * dr2_4B(dr2,5,2,5,2); // zz tensor component
+#else
+    stress[0] -= fscalar_5 * dr[5*CHDIM+0] * dr[5*CHDIM+0]; // xx tensor component
+    stress[1] -= fscalar_5 * dr[5*CHDIM+0] * dr[5*CHDIM+1]; // xy tensor component
+    stress[2] -= fscalar_5 * dr[5*CHDIM+0] * dr[5*CHDIM+2]; // xz tensor component
+    stress[3] -= fscalar_5 * dr[5*CHDIM+1] * dr[5*CHDIM+1]; // yy tensor component
+    stress[4] -= fscalar_5 * dr[5*CHDIM+1] * dr[5*CHDIM+2]; // yz tensor component
+    stress[5] -= fscalar_5 * dr[5*CHDIM+2] * dr[5*CHDIM+2]; // zz tensor component
+#endif
+  }
+
+  force_scalar_in[0] = force_scalar[0];
+  force_scalar_in[1] = force_scalar[1];
+  force_scalar_in[2] = force_scalar[2];
+  force_scalar_in[3] = force_scalar[3];
+  force_scalar_in[4] = force_scalar[4];
+  force_scalar_in[5] = force_scalar[5];
+}
