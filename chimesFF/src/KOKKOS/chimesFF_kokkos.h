@@ -47,10 +47,10 @@ class chimesFFKokkos : public chimesFF
 
   // Two-body
 
-  struct chimes2BTmpKK {
+  struct chimes2BTmpKokkos {
     typename AT::t_kkfloat_1d d_Tn, d_Tnd;
 
-    chimes2BTmpKK(int poly_order) {
+    chimes2BTmpKokkos(int poly_order) {
       LAMMPS_NS::MemKK::realloc_kokkos(d_Tn,"chimes:Tn",poly_order+1);
       LAMMPS_NS::MemKK::realloc_kokkos(d_Tnd,"chimes:Tnd",poly_order+1);
     }
@@ -67,12 +67,12 @@ class chimesFFKokkos : public chimesFF
 
   // Three-body
 
-  struct chimes3BTmpKK
+  struct chimes3BTmpKokkos
   {
     typename AT::t_kkfloat_1d d_Tn_ij, d_Tn_ik, d_Tn_jk;   // The Chebyshev polymonials
     typename AT::t_kkfloat_1d d_Tnd_ij, d_Tnd_ik, d_Tnd_jk;  // The Chebyshev polymonial derivatives
 
-    chimes3BTmpKK(int poly_order) {
+    chimes3BTmpKokkos(int poly_order) {
       LAMMPS_NS::MemKK::realloc_kokkos(d_Tn_ij,"chimes:Tn_ij",poly_order+1);
       LAMMPS_NS::MemKK::realloc_kokkos(d_Tn_ik,"chimes:Tn_ik",poly_order+1);
       LAMMPS_NS::MemKK::realloc_kokkos(d_Tn_jk,"chimes:Tn_jk",poly_order+1);
@@ -96,11 +96,11 @@ class chimesFFKokkos : public chimesFF
 
   // Four-body
 
-  struct chimes4BTmpKK {
+  struct chimes4BTmpKokkos {
     typename AT::t_kkfloat_1d d_Tn_ij, d_Tn_ik, d_Tn_il, d_Tn_jk, d_Tn_jl, d_Tn_kl;   // The Chebyshev polymonials
     typename AT::t_kkfloat_1d d_Tnd_ij, d_Tnd_ik, d_Tnd_il, d_Tnd_jk, d_Tnd_jl, d_Tnd_kl;  // The Chebyshev polymonial derivatives
 
-    chimes4BTmpKK(int poly_order) {
+    chimes4BTmpKokkos(int poly_order) {
       LAMMPS_NS::MemKK::realloc_kokkos(d_Tn_ij,"chimes:Tn_ij",poly_order+1);
       LAMMPS_NS::MemKK::realloc_kokkos(d_Tn_ik,"chimes:Tn_ik",poly_order+1);
       LAMMPS_NS::MemKK::realloc_kokkos(d_Tn_il,"chimes:Tn_il",poly_order+1);
@@ -155,14 +155,14 @@ class chimesFFKokkos : public chimesFF
 
   // 2+B compute functions overloaded with force_scalar_in var for compatibility with LAMMPS
 
-  void compute_2B(const KK_FLOAT dx, typename AT::t_kkfloat_1d & dr, const vector<int> typ_idxs, typename AT::t_kkfloat_1d & force, typename AT::t_kkfloat_1d & stress, KK_FLOAT & energy, chimes2BTmpKK &tmp);
-  void compute_2B(const KK_FLOAT dx, typename AT::t_kkfloat_1d & dr, const vector<int> typ_idxs, typename AT::t_kkfloat_1d & force, typename AT::t_kkfloat_1d & stress, KK_FLOAT & energy, chimes2BTmpKK &tmp, KK_FLOAT & force_scalar_in);
+  void compute_2B(const KK_FLOAT dx, typename AT::t_kkfloat_1d & dr, const vector<int> typ_idxs, typename AT::t_kkfloat_1d & force, typename AT::t_kkfloat_1d & stress, KK_FLOAT & energy, chimes2BTmpKokkos &tmp);
+  void compute_2B(const KK_FLOAT dx, typename AT::t_kkfloat_1d & dr, const vector<int> typ_idxs, typename AT::t_kkfloat_1d & force, typename AT::t_kkfloat_1d & stress, KK_FLOAT & energy, chimes2BTmpKokkos &tmp, KK_FLOAT & force_scalar_in);
 
-  void compute_3B(typename AT::t_kkfloat_1d & dx, typename AT::t_kkfloat_1d & dr, const vector<int> & typ_idxs, typename AT::t_kkfloat_1d & force,typename AT::t_kkfloat_1d & stress, KK_FLOAT & energy, chimes3BTmpKK &tmp);
-  void compute_3B(typename AT::t_kkfloat_1d & dx, typename AT::t_kkfloat_1d & dr, const vector<int> & typ_idxs, typename AT::t_kkfloat_1d & force,typename AT::t_kkfloat_1d & stress, KK_FLOAT & energy, chimes3BTmpKK &tmp, typename AT::t_kkfloat_1d & force_scalar_in);
+  void compute_3B(typename AT::t_kkfloat_1d & dx, typename AT::t_kkfloat_1d & dr, const vector<int> & typ_idxs, typename AT::t_kkfloat_1d & force,typename AT::t_kkfloat_1d & stress, KK_FLOAT & energy, chimes3BTmpKokkos &tmp);
+  void compute_3B(typename AT::t_kkfloat_1d & dx, typename AT::t_kkfloat_1d & dr, const vector<int> & typ_idxs, typename AT::t_kkfloat_1d & force,typename AT::t_kkfloat_1d & stress, KK_FLOAT & energy, chimes3BTmpKokkos &tmp, typename AT::t_kkfloat_1d & force_scalar_in);
 
-  void compute_4B(typename AT::t_kkfloat_1d & dx, typename AT::t_kkfloat_1d & dr, const vector<int> & typ_idxs, typename AT::t_kkfloat_1d & force, typename AT::t_kkfloat_1d & stress, KK_FLOAT & energy, chimes4BTmpKK &tmp);
-  void compute_4B(typename AT::t_kkfloat_1d & dx, typename AT::t_kkfloat_1d & dr, const vector<int> & typ_idxs, typename AT::t_kkfloat_1d & force, typename AT::t_kkfloat_1d & stress, KK_FLOAT & energy, chimes4BTmpKK &tmp, typename AT::t_kkfloat_1d & force_scalar_in);
+  void compute_4B(typename AT::t_kkfloat_1d & dx, typename AT::t_kkfloat_1d & dr, const vector<int> & typ_idxs, typename AT::t_kkfloat_1d & force, typename AT::t_kkfloat_1d & stress, KK_FLOAT & energy, chimes4BTmpKokkos &tmp);
+  void compute_4B(typename AT::t_kkfloat_1d & dx, typename AT::t_kkfloat_1d & dr, const vector<int> & typ_idxs, typename AT::t_kkfloat_1d & force, typename AT::t_kkfloat_1d & stress, KK_FLOAT & energy, chimes4BTmpKokkos &tmp, typename AT::t_kkfloat_1d & force_scalar_in);
 
   // Functions to aid using ChIMES Calculator for fitting
 

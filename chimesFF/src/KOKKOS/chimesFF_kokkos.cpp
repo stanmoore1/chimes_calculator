@@ -23,7 +23,7 @@ using namespace std;
 /* ---------------------------------------------------------------------- */
 
 template<class DeviceType>
-chimesFFKokkos<DeviceType>::chimesFFKokkos
+chimesFFKokkos<DeviceType>::chimesFFKokkos() : chimesFF()
 {
 
 }

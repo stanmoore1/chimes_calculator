@@ -42,7 +42,13 @@ class PairCHIMESKokkos : public PairCHIMES
   struct TagPairCHIMESComputeNeigh{};
 
   template<int NEIGHFLAG, int EVFLAG>
-  struct TagPairCHIMESComputeForce{};
+  struct TagPairCHIMESCompute2Body{};
+
+  template<int NEIGHFLAG, int EVFLAG>
+  struct TagPairCHIMESCompute3Body{};
+
+  template<int NEIGHFLAG, int EVFLAG>
+  struct TagPairCHIMESCompute4Body{};
 
   typedef DeviceType device_type;
   typedef ArrayTypes<DeviceType> AT;
@@ -63,11 +69,27 @@ class PairCHIMESKokkos : public PairCHIMES
 
   template<int NEIGHFLAG, int EVFLAG>
   KOKKOS_INLINE_FUNCTION
-  void operator() (TagPairCHIMESComputeForce<NEIGHFLAG,EVFLAG>,const int& ii) const;
+  void operator() (TagPairCHIMESCompute2Body<NEIGHFLAG,EVFLAG>,const int& ii) const;
 
   template<int NEIGHFLAG, int EVFLAG>
   KOKKOS_INLINE_FUNCTION
-  void operator() (TagPairCHIMESComputeForce<NEIGHFLAG,EVFLAG>,const int& ii, EV_FLOAT&) const;
+  void operator() (TagPairCHIMESCompute2Body<NEIGHFLAG,EVFLAG>,const int& ii, EV_FLOAT&) const;
+
+  template<int NEIGHFLAG, int EVFLAG>
+  KOKKOS_INLINE_FUNCTION
+  void operator() (TagPairCHIMESCompute3Body<NEIGHFLAG,EVFLAG>,const int& ii) const;
+
+  template<int NEIGHFLAG, int EVFLAG>
+  KOKKOS_INLINE_FUNCTION
+  void operator() (TagPairCHIMESCompute3Body<NEIGHFLAG,EVFLAG>,const int& ii, EV_FLOAT&) const;
+
+  template<int NEIGHFLAG, int EVFLAG>
+  KOKKOS_INLINE_FUNCTION
+  void operator() (TagPairCHIMESCompute4Body<NEIGHFLAG,EVFLAG>,const int& ii) const;
+
+  template<int NEIGHFLAG, int EVFLAG>
+  KOKKOS_INLINE_FUNCTION
+  void operator() (TagPairCHIMESCompute4Body<NEIGHFLAG,EVFLAG>,const int& ii, EV_FLOAT&) const;
 
   KOKKOS_INLINE_FUNCTION
   KK_FLOAT get_dist(int i, int j, KK_FLOAT* dr) const;
@@ -78,7 +100,7 @@ class PairCHIMESKokkos : public PairCHIMES
  private:
   int neighflag;
   int inum, maxneigh, chunk_size, chunk_offset;
-  int host_flag;
+  int host_flag, max_3mers, max_4mers;
 
   KK_FLOAT maxcut_3b_padded, maxcut_4b_padded;
 
@@ -112,7 +134,13 @@ class PairCHIMESKokkos : public PairCHIMES
   DAT::tdual_int_scalar k_resize_3mers, k_resize_4mers;
   typename AT::t_int_scalar d_resize_3mers, d_resize_4mers;
 
+  typename AT::t_int_1d d_force_2b, d_force_3b, d_force_4b;
+
   chimesFFKokkos<DeviceType> chimes_calculatorKK; // chimesFF instance
+
+  typename chimesFFKokkos<DeviceType>::chimes2BTmpKokkos chimes_2btmpKK;
+  typename chimesFFKokkos<DeviceType>::chimes3BTmpKokkos chimes_3btmpKK;
+  typename chimesFFKokkos<DeviceType>::chimes4BTmpKokkos chimes_4btmpKK;
 
   int need_dup;
 
@@ -137,7 +165,9 @@ class PairCHIMESKokkos : public PairCHIMES
   template<int NEIGHFLAG>
   KOKKOS_INLINE_FUNCTION
   void ev_tally_mb(int ninteractionatoms, int npairs,
-                   int atmpairidxlst[6][2],EV_FLOAT &ev) const;
+                   int atmpairidxlst[6][2],
+                   KK_FLOAT, KK_FLOAT[6],
+                   EV_FLOAT &ev) const;
 
 };
 }    // namespace LAMMPS_NS
