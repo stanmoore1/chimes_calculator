@@ -62,7 +62,7 @@ KK_FLOAT chimesFFKokkos<DeviceType>::dr2_4B(const KK_FLOAT *dr2, int i, int j, i
 
 template<class DeviceType>
 KOKKOS_INLINE_FUNCTION
-void chimesFFKokkos<DeviceType>::init_distance_tensor(KK_FLOAT *dr2, const vector<KK_FLOAT> & dr, int npairs)
+void chimesFFKokkos<DeviceType>::init_distance_tensor(KK_FLOAT *dr2, typename AT::t_kkfloat_1d & dr, int npairs)
 {
   for (int i = 0; i < npairs; i++ )
     for (int j = 0; j < CHDIM; j++ )
@@ -88,7 +88,7 @@ void chimesFFKokkos<DeviceType>::compute_1B(const int typ_idx, KK_FLOAT & energy
 
 template<class DeviceType>
 KOKKOS_INLINE_FUNCTION
-void chimesFFKokkos<DeviceType>::compute_2B(const KK_FLOAT dx, const vector<KK_FLOAT> & dr, const vector<int> typ_idxs, vector<KK_FLOAT> & force, vector<KK_FLOAT> & stress, KK_FLOAT & energy, chimes2BTmp &tmp)
+void chimesFFKokkos<DeviceType>::compute_2B(const KK_FLOAT dx, typename AT::t_kkfloat_1d & dr, const vector<int> typ_idxs, typename AT::t_kkfloat_1d & force, typename AT::t_kkfloat_1d & stress, KK_FLOAT & energy, chimes2BTmp &tmp)
 {
   KK_FLOAT dummy_force_scalar;
   compute_2B(dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar);
@@ -98,7 +98,7 @@ void chimesFFKokkos<DeviceType>::compute_2B(const KK_FLOAT dx, const vector<KK_F
 
 template<class DeviceType>
 KOKKOS_INLINE_FUNCTION
-void chimesFFKokkos<DeviceType>::compute_2B(const KK_FLOAT dx, const vector<KK_FLOAT> & dr, const vector<int> typ_idxs, vector<KK_FLOAT> & force, vector<KK_FLOAT> & stress, KK_FLOAT & energy, chimes2BTmp &tmp, KK_FLOAT & force_scalar_in)
+void chimesFFKokkos<DeviceType>::compute_2B(const KK_FLOAT dx, typename AT::t_kkfloat_1d & dr, const vector<int> typ_idxs, typename AT::t_kkfloat_1d & force, typename AT::t_kkfloat_1d & stress, KK_FLOAT & energy, chimes2BTmp &tmp, KK_FLOAT & force_scalar_in)
 {
   // Compute 2b (input: 2 atoms or distances, corresponding types... outputs (updates) force, acceleration, energy, stress
   //
@@ -124,8 +124,8 @@ void chimesFFKokkos<DeviceType>::compute_2B(const KK_FLOAT dx, const vector<KK_F
 
   // Use references for readability
 
-  vector<KK_FLOAT> &Tn = tmp.Tn;
-  vector<KK_FLOAT> &Tnd = tmp.Tnd;
+  typename AT::t_kkfloat_1d &Tn = tmp.Tn;
+  typename AT::t_kkfloat_1d &Tnd = tmp.Tnd;
 
   pair_idx = atom_int_pair_map[typ_idxs[0]*natmtyps + typ_idxs[1]];
 
@@ -209,9 +209,9 @@ void chimesFFKokkos<DeviceType>::compute_2B(const KK_FLOAT dx, const vector<KK_F
 
 template<class DeviceType>
 KOKKOS_INLINE_FUNCTION
-void chimesFFKokkos<DeviceType>::compute_3B(const vector<KK_FLOAT> & dx, const vector<KK_FLOAT> & dr, const vector<int> & typ_idxs, vector<KK_FLOAT> & force, vector<KK_FLOAT> & stress, KK_FLOAT & energy, chimes3BTmp &tmp)
+void chimesFFKokkos<DeviceType>::compute_3B(typename AT::t_kkfloat_1d & dx, typename AT::t_kkfloat_1d & dr, const vector<int> & typ_idxs, typename AT::t_kkfloat_1d & force, typename AT::t_kkfloat_1d & stress, KK_FLOAT & energy, chimes3BTmp &tmp)
 {
-  vector<KK_FLOAT> dummy_force_scalar(3);
+  typename AT::t_kkfloat_1d dummy_force_scalar(3);
   compute_3B(dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar);
 }
 
@@ -219,7 +219,7 @@ void chimesFFKokkos<DeviceType>::compute_3B(const vector<KK_FLOAT> & dx, const v
 
 template<class DeviceType>
 KOKKOS_INLINE_FUNCTION
-void chimesFFKokkos<DeviceType>::compute_3B(const vector<KK_FLOAT> & dx, const vector<KK_FLOAT> & dr, const vector<int> & typ_idxs, vector<KK_FLOAT> & force, vector<KK_FLOAT> & stress, KK_FLOAT & energy, chimes3BTmp &tmp, vector<KK_FLOAT> & force_scalar_in)
+void chimesFFKokkos<DeviceType>::compute_3B(typename AT::t_kkfloat_1d & dx, typename AT::t_kkfloat_1d & dr, const vector<int> & typ_idxs, typename AT::t_kkfloat_1d & force, typename AT::t_kkfloat_1d & stress, KK_FLOAT & energy, chimes3BTmp &tmp, typename AT::t_kkfloat_1d & force_scalar_in)
 {
   // Compute 3b (input: 3 atoms or distances, corresponding types... outputs (updates) force, acceleration, energy, stress
   //
@@ -242,12 +242,12 @@ void chimesFFKokkos<DeviceType>::compute_3B(const vector<KK_FLOAT> & dx, const v
 
   // tmp.resize(poly_orders[1]);
 
-  vector<KK_FLOAT> &Tn_ij = tmp.Tn_ij;
-  vector<KK_FLOAT> &Tn_ik = tmp.Tn_ik;
-  vector<KK_FLOAT> &Tn_jk = tmp.Tn_jk;   // The Chebyshev polymonials
-  vector<KK_FLOAT> &Tnd_ij = tmp.Tnd_ij;
-  vector<KK_FLOAT> &Tnd_ik = tmp.Tnd_ik;
-  vector<KK_FLOAT> &Tnd_jk = tmp.Tnd_jk;  // The Chebyshev polymonial derivatives
+  typename AT::t_kkfloat_1d &Tn_ij = tmp.Tn_ij;
+  typename AT::t_kkfloat_1d &Tn_ik = tmp.Tn_ik;
+  typename AT::t_kkfloat_1d &Tn_jk = tmp.Tn_jk;   // The Chebyshev polymonials
+  typename AT::t_kkfloat_1d &Tnd_ij = tmp.Tnd_ij;
+  typename AT::t_kkfloat_1d &Tnd_ik = tmp.Tnd_ik;
+  typename AT::t_kkfloat_1d &Tnd_jk = tmp.Tnd_jk;  // The Chebyshev polymonial derivatives
 
   // Avoid allocating vector quantities.  Heap memory allocation is slow on the GPU.
   // fixed-length C arrays are allocated on the stack
@@ -450,9 +450,9 @@ void chimesFFKokkos<DeviceType>::compute_3B(const vector<KK_FLOAT> & dx, const v
 
 template<class DeviceType>
 KOKKOS_INLINE_FUNCTION
-void chimesFFKokkos<DeviceType>::compute_4B(const vector<KK_FLOAT> & dx, const vector<KK_FLOAT> & dr, const vector<int> & typ_idxs, vector<KK_FLOAT> & force, vector<KK_FLOAT> & stress, KK_FLOAT & energy, chimes4BTmp &tmp)
+void chimesFFKokkos<DeviceType>::compute_4B(typename AT::t_kkfloat_1d & dx, typename AT::t_kkfloat_1d & dr, const vector<int> & typ_idxs, typename AT::t_kkfloat_1d & force, typename AT::t_kkfloat_1d & stress, KK_FLOAT & energy, chimes4BTmp &tmp)
 {
-  vector<KK_FLOAT> dummy_force_scalar(6);
+  typename AT::t_kkfloat_1d dummy_force_scalar(6);
   compute_4B(dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar);
 }
 
@@ -460,7 +460,7 @@ void chimesFFKokkos<DeviceType>::compute_4B(const vector<KK_FLOAT> & dx, const v
 
 template<class DeviceType>
 KOKKOS_INLINE_FUNCTION
-void chimesFFKokkos<DeviceType>::compute_4B(const vector<KK_FLOAT> & dx, const vector<KK_FLOAT> & dr, const vector<int> & typ_idxs, vector<KK_FLOAT> & force, vector<KK_FLOAT> & stress, KK_FLOAT & energy, chimes4BTmp &tmp, vector<KK_FLOAT> & force_scalar_in)
+void chimesFFKokkos<DeviceType>::compute_4B(typename AT::t_kkfloat_1d & dx, typename AT::t_kkfloat_1d & dr, const vector<int> & typ_idxs, typename AT::t_kkfloat_1d & force, typename AT::t_kkfloat_1d & stress, KK_FLOAT & energy, chimes4BTmp &tmp, typename AT::t_kkfloat_1d & force_scalar_in)
 {
   // Compute 3b (input: 3 atoms or distances, corresponding types... outputs (updates) force, acceleration, energy, stress
   //
@@ -491,19 +491,19 @@ void chimesFFKokkos<DeviceType>::compute_4B(const vector<KK_FLOAT> & dx, const v
   }
 #endif
 
-  vector<KK_FLOAT> &Tn_ij = tmp.Tn_ij;
-  vector<KK_FLOAT> &Tn_ik = tmp.Tn_ik;
-  vector<KK_FLOAT> &Tn_il = tmp.Tn_il;
-  vector<KK_FLOAT> &Tn_jk = tmp.Tn_jk;
-  vector<KK_FLOAT> &Tn_jl = tmp.Tn_jl;
-  vector<KK_FLOAT> &Tn_kl = tmp.Tn_kl;
+  typename AT::t_kkfloat_1d &Tn_ij = tmp.Tn_ij;
+  typename AT::t_kkfloat_1d &Tn_ik = tmp.Tn_ik;
+  typename AT::t_kkfloat_1d &Tn_il = tmp.Tn_il;
+  typename AT::t_kkfloat_1d &Tn_jk = tmp.Tn_jk;
+  typename AT::t_kkfloat_1d &Tn_jl = tmp.Tn_jl;
+  typename AT::t_kkfloat_1d &Tn_kl = tmp.Tn_kl;
 
-  vector<KK_FLOAT> &Tnd_ij = tmp.Tnd_ij;
-  vector<KK_FLOAT> &Tnd_ik = tmp.Tnd_ik;
-  vector<KK_FLOAT> &Tnd_il = tmp.Tnd_il;
-  vector<KK_FLOAT> &Tnd_jk = tmp.Tnd_jk;
-  vector<KK_FLOAT> &Tnd_jl = tmp.Tnd_jl;
-  vector<KK_FLOAT> &Tnd_kl = tmp.Tnd_kl;
+  typename AT::t_kkfloat_1d &Tnd_ij = tmp.Tnd_ij;
+  typename AT::t_kkfloat_1d &Tnd_ik = tmp.Tnd_ik;
+  typename AT::t_kkfloat_1d &Tnd_il = tmp.Tnd_il;
+  typename AT::t_kkfloat_1d &Tnd_jk = tmp.Tnd_jk;
+  typename AT::t_kkfloat_1d &Tnd_jl = tmp.Tnd_jl;
+  typename AT::t_kkfloat_1d &Tnd_kl = tmp.Tnd_kl;
 
   int idx = typ_idxs[0]*natmtyps*natmtyps*natmtyps
       + typ_idxs[1]*natmtyps*natmtyps + typ_idxs[2]*natmtyps + typ_idxs[3];

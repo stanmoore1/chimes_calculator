@@ -27,7 +27,7 @@ PairStyle(chimesFF/kk/host,PairCHIMESKokkos<LMPHostType>);
 #ifndef LMP_PAIR_CHIMES_KOKKOS_H
 #define LMP_PAIR_CHIMES_KOKKOS_H
 
-#include "chimesFF.h"
+#include "chimesFF_kokkos.h"
 #include "pair_chimes.h"
 #include "kokkos_base.h"
 
@@ -37,7 +37,7 @@ template<class DeviceType>
 class PairCHIMESKokkos : public PairCHIMES
 {
  public:
-  chimesFF chimes_calculator;   // chimesFF instance
+  struct TagPairCHIMESZero{};
 
   struct TagPairCHIMESComputeNeigh{};
 
@@ -56,7 +56,10 @@ class PairCHIMESKokkos : public PairCHIMES
   void build_mb_neighlists() override;
 
   KOKKOS_INLINE_FUNCTION
-  void operator() (TagPairCHIMESComputeNeigh,const typename Kokkos::TeamPolicy<DeviceType, TagPairCHIMESComputeNeigh>::member_type& team) const;
+  void operator()(TagPairCHIMESZero, const int&) const;
+
+  KOKKOS_INLINE_FUNCTION
+  void operator() (TagPairCHIMESComputeNeigh,const int& ii) const;
 
   template<int NEIGHFLAG, int EVFLAG>
   KOKKOS_INLINE_FUNCTION
@@ -77,6 +80,8 @@ class PairCHIMESKokkos : public PairCHIMES
   int inum, maxneigh, chunk_size, chunk_offset;
   int host_flag;
 
+  KK_FLOAT maxcut_3b_padded, maxcut_4b_padded;
+
   int eflag, vflag;
 
   typename AT::t_neighbors_2d d_neighbors;
@@ -90,6 +95,7 @@ class PairCHIMESKokkos : public PairCHIMES
 
   typename AT::t_kkfloat_1d_3_lr_randomread x;
   typename AT::t_kkacc_1d_3 f;
+  typename AT::t_tagint_1d tag;
   typename AT::t_int_1d_randomread type;
 
   typedef Kokkos::DualView<KK_FLOAT**, DeviceType> tdual_fparams;
@@ -97,7 +103,16 @@ class PairCHIMESKokkos : public PairCHIMES
   typedef Kokkos::View<KK_FLOAT**, DeviceType> t_fparams;
   t_fparams d_cutsq, d_scale;
 
-  typename AT::t_int_1d d_chimes_type;
+  typename AT::t_int_1d d_chimes_type,d_map;
+
+  typename AT::t_int_1d_3 d_neighborlist_3mers;
+  typename AT::t_int_1d_4 d_neighborlist_4mers;
+
+  typename AT::t_int_1d d_3mers_num, d_4mers_num;
+  DAT::tdual_int_scalar k_resize_3mers, k_resize_4mers;
+  typename AT::t_int_scalar d_resize_3mers, d_resize_4mers;
+
+  chimesFFKokkos<DeviceType> chimes_calculatorKK; // chimesFF instance
 
   int need_dup;
 
@@ -110,18 +125,19 @@ class PairCHIMESKokkos : public PairCHIMES
   using NonDupScatterView = KKScatterView<DataType, Layout, KKDeviceType, KKScatterSum, KKScatterNonDuplicated>;
 
   DupScatterView<KK_ACC_FLOAT*[3], typename DAT::t_kkacc_1d_3::array_layout> dup_f;
+  DupScatterView<KK_ACC_FLOAT*, typename DAT::t_kkacc_1d::array_layout> dup_eatom;
   DupScatterView<KK_ACC_FLOAT*[6], typename DAT::t_kkacc_1d_6::array_layout> dup_vatom;
 
   NonDupScatterView<KK_ACC_FLOAT*[3], typename DAT::t_kkacc_1d_3::array_layout> ndup_f;
+  NonDupScatterView<KK_ACC_FLOAT*, typename DAT::t_kkacc_1d::array_layout> ndup_eatom;
   NonDupScatterView<KK_ACC_FLOAT*[6], typename DAT::t_kkacc_1d_6::array_layout> ndup_vatom;
 
   friend void pair_virial_fdotr_compute<PairCHIMESKokkos>(PairCHIMESKokkos*);
 
   template<int NEIGHFLAG>
   KOKKOS_INLINE_FUNCTION
-  void v_tally_xyz(EV_FLOAT &ev, const int &i, const int &j,
-      const KK_FLOAT &fx, const KK_FLOAT &fy, const KK_FLOAT &fz,
-      const KK_FLOAT &delx, const KK_FLOAT &dely, const KK_FLOAT &delz) const;
+  void ev_tally_mb(int ninteractionatoms, int npairs,
+                   int atmpairidxlst[6][2],EV_FLOAT &ev) const;
 
 };
 }    // namespace LAMMPS_NS

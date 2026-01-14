@@ -56,7 +56,7 @@ namespace LAMMPS_NS
 			
 			// Variable definitions
 			
-			chimesFF chimes_calculator;   // chimesFF instance
+			chimesFF * chimes_calculator;   // chimesFF instance
 			
 			char * chimesFF_paramfile;	  // ChIMES parameter file
 			
@@ -119,6 +119,8 @@ namespace LAMMPS_NS
 		    inline double get_dist(int i, int j, double* dr);
 		    inline double get_dist(int i, int j);
 			void   set_chimes_type();
+                        void ev_tally_mb(int ninteractionatoms, int npairs, int atmpairidxlst[6][2], double evdwl, std::vector<double> stress);
+
 
 			// Functions I haven't worked on 
 						
