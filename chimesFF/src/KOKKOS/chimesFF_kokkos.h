@@ -11,7 +11,6 @@
 #include "kokkos_type.h"
 #include "memory_kokkos.h"
 
-#include<vector>
 #include<iostream>
 #include<iomanip>
 #include<fstream>
@@ -50,6 +49,8 @@ class chimesFFKokkos : public chimesFF
   struct chimes2BTmpKokkos {
     typename AT::t_kkfloat_1d d_Tn, d_Tnd;
 
+    chimes2BTmpKokkos() {}
+
     chimes2BTmpKokkos(int poly_order) {
       LAMMPS_NS::MemKK::realloc_kokkos(d_Tn,"chimes:Tn",poly_order+1);
       LAMMPS_NS::MemKK::realloc_kokkos(d_Tnd,"chimes:Tnd",poly_order+1);
@@ -64,13 +65,14 @@ class chimesFFKokkos : public chimesFF
     }
   };
 
-
   // Three-body
 
   struct chimes3BTmpKokkos
   {
     typename AT::t_kkfloat_1d d_Tn_ij, d_Tn_ik, d_Tn_jk;   // The Chebyshev polymonials
     typename AT::t_kkfloat_1d d_Tnd_ij, d_Tnd_ik, d_Tnd_jk;  // The Chebyshev polymonial derivatives
+
+    chimes3BTmpKokkos() {}
 
     chimes3BTmpKokkos(int poly_order) {
       LAMMPS_NS::MemKK::realloc_kokkos(d_Tn_ij,"chimes:Tn_ij",poly_order+1);
@@ -99,6 +101,8 @@ class chimesFFKokkos : public chimesFF
   struct chimes4BTmpKokkos {
     typename AT::t_kkfloat_1d d_Tn_ij, d_Tn_ik, d_Tn_il, d_Tn_jk, d_Tn_jl, d_Tn_kl;   // The Chebyshev polymonials
     typename AT::t_kkfloat_1d d_Tnd_ij, d_Tnd_ik, d_Tnd_il, d_Tnd_jk, d_Tnd_jl, d_Tnd_kl;  // The Chebyshev polymonial derivatives
+
+    chimes4BTmpKokkos() {}
 
     chimes4BTmpKokkos(int poly_order) {
       LAMMPS_NS::MemKK::realloc_kokkos(d_Tn_ij,"chimes:Tn_ij",poly_order+1);
@@ -138,9 +142,9 @@ class chimesFFKokkos : public chimesFF
   // General parameters
   ////////////////////////
 
-  vector<int>      poly_orders;    // [bodiedness-1]; i.e. 12 = 2-body only, 12th order; 12 5 = 2+3-body, 0 5 = 3-body only, 5th order
-  vector<string>   atmtyps;        // Atom types
-  typename AT::t_kkfloat_1d   masses;         // Atom masses
+  typename AT::t_int_1d d_poly_orders;    // [bodiedness-1]; i.e. 12 = 2-body only, 12th order; 12 5 = 2+3-body, 0 5 = 3-body only, 5th order
+  //vector<string> atmtyps;                 // Atom types
+  //typename AT::t_kkfloat_1d d_masses;     // Atom masses
 
   ////////////////////////
   // Functions
@@ -149,31 +153,39 @@ class chimesFFKokkos : public chimesFF
   chimesFFKokkos();
   ~chimesFFKokkos();
 
-  void read_parameters(string paramfile) override;
-
-  void compute_1B(const int typ_idx, KK_FLOAT & energy);
+  KOKKOS_INLINE_FUNCTION
+  void compute_1B(const int typ_idx, KK_FLOAT & energy) const;
 
   // 2+B compute functions overloaded with force_scalar_in var for compatibility with LAMMPS
 
-  void compute_2B(const KK_FLOAT dx, typename AT::t_kkfloat_1d & dr, const vector<int> typ_idxs, typename AT::t_kkfloat_1d & force, typename AT::t_kkfloat_1d & stress, KK_FLOAT & energy, chimes2BTmpKokkos &tmp);
-  void compute_2B(const KK_FLOAT dx, typename AT::t_kkfloat_1d & dr, const vector<int> typ_idxs, typename AT::t_kkfloat_1d & force, typename AT::t_kkfloat_1d & stress, KK_FLOAT & energy, chimes2BTmpKokkos &tmp, KK_FLOAT & force_scalar_in);
+  KOKKOS_INLINE_FUNCTION
+  void compute_2B(const KK_FLOAT dx, const KK_FLOAT* dr, const int* typ_idxs, KK_FLOAT* force, KK_FLOAT* stress, KK_FLOAT & energy, const chimes2BTmpKokkos &tmp) const;
 
-  void compute_3B(typename AT::t_kkfloat_1d & dx, typename AT::t_kkfloat_1d & dr, const vector<int> & typ_idxs, typename AT::t_kkfloat_1d & force,typename AT::t_kkfloat_1d & stress, KK_FLOAT & energy, chimes3BTmpKokkos &tmp);
-  void compute_3B(typename AT::t_kkfloat_1d & dx, typename AT::t_kkfloat_1d & dr, const vector<int> & typ_idxs, typename AT::t_kkfloat_1d & force,typename AT::t_kkfloat_1d & stress, KK_FLOAT & energy, chimes3BTmpKokkos &tmp, typename AT::t_kkfloat_1d & force_scalar_in);
+  KOKKOS_INLINE_FUNCTION
+  void compute_2B(const KK_FLOAT dx, const KK_FLOAT* dr, const int* typ_idxs, KK_FLOAT* force, KK_FLOAT* stress, KK_FLOAT & energy, const chimes2BTmpKokkos &tmp, KK_FLOAT& force_scalar_in) const;
 
-  void compute_4B(typename AT::t_kkfloat_1d & dx, typename AT::t_kkfloat_1d & dr, const vector<int> & typ_idxs, typename AT::t_kkfloat_1d & force, typename AT::t_kkfloat_1d & stress, KK_FLOAT & energy, chimes4BTmpKokkos &tmp);
-  void compute_4B(typename AT::t_kkfloat_1d & dx, typename AT::t_kkfloat_1d & dr, const vector<int> & typ_idxs, typename AT::t_kkfloat_1d & force, typename AT::t_kkfloat_1d & stress, KK_FLOAT & energy, chimes4BTmpKokkos &tmp, typename AT::t_kkfloat_1d & force_scalar_in);
+  KOKKOS_INLINE_FUNCTION
+  void compute_3B(const KK_FLOAT* dx, const KK_FLOAT* dr, const int* typ_idxs, KK_FLOAT* force, KK_FLOAT* stress, KK_FLOAT & energy, const chimes3BTmpKokkos &tmp) const;
+
+  KOKKOS_INLINE_FUNCTION
+  void compute_3B(const KK_FLOAT* dx, const KK_FLOAT* dr, const int* typ_idxs, KK_FLOAT* force,KK_FLOAT* stress, KK_FLOAT & energy, const chimes3BTmpKokkos &tmp, KK_FLOAT* force_scalar_in) const;
+
+  KOKKOS_INLINE_FUNCTION
+  void compute_4B(const KK_FLOAT* dx, const KK_FLOAT* dr, const int* typ_idxs, KK_FLOAT* force, KK_FLOAT* stress, KK_FLOAT & energy, const chimes4BTmpKokkos &tmp) const;
+
+  KOKKOS_INLINE_FUNCTION
+  void compute_4B(const KK_FLOAT* dx, const KK_FLOAT* dr, const int* typ_idxs, KK_FLOAT* force, KK_FLOAT* stress, KK_FLOAT & energy, const chimes4BTmpKokkos &tmp, KK_FLOAT* force_scalar_in) const;
 
   // Functions to aid using ChIMES Calculator for fitting
 
-  inline int  get_badness();
-  inline void reset_badness();
+  //inline int get_badness();
+  //inline void reset_badness();
 
 private:
 
-  typename AT::t_kkfloat_1d    morse_var;      // [npairs]; morse_lambda
-  typename AT::t_kkfloat_1d    penalty_params; // [2];  Second dimension: [0] = A_pen, [1] = d_pen
-  typename AT::t_kkfloat_1d    energy_offsets; // [natmtyps]; Single atom ChIMES energies
+  typename AT::t_kkfloat_1d d_morse_var;      // [npairs]; morse_lambda
+  //typename AT::t_kkfloat_1d d_penalty_params; // [2];  Second dimension: [0] = A_pen, [1] = d_pen
+  typename AT::t_kkfloat_1d d_energy_offsets; // [natmtyps]; Single atom ChIMES energies
 
   ////////////////////////
   // Definitions for pair, triplet, and quadruplet types
@@ -181,24 +193,24 @@ private:
 
   // 2-body maps
 
-  vector    <string> atom_typ_pair_map; // [nmaps] "slow" maps, based on atom chemical symbol    // Used to build int map -- gives chemical symbol list (i.e. "SiO")
-  vector       <int> atom_idx_pair_map; // [nmaps] "slow" maps, based on atom chemical symbol    // Used to build int map -- gives correspoding parameter index (i.e. 5)
-  vector       <int> atom_int_pair_map; // [nmaps] "fast" maps, based on atom type index
-  vector    <string> atom_int_prpr_map; // [nmaps] "fast" maps, based on atom type index ... returns the "proper" pair type instead of an index
+  //vector<string> atom_typ_pair_map; // [nmaps] "slow" maps, based on atom chemical symbol    // Used to build int map -- gives chemical symbol list (i.e. "SiO")
+  //typename AT::t_int_1d d_atom_idx_pair_map; // [nmaps] "slow" maps, based on atom chemical symbol    // Used to build int map -- gives correspoding parameter index (i.e. 5)
+  typename AT::t_int_1d d_atom_int_pair_map; // [nmaps] "fast" maps, based on atom type index
+  //vector<string> atom_int_prpr_map; // [nmaps] "fast" maps, based on atom type index ... returns the "proper" pair type instead of an index
 
   // 3-body maps
 
-  vector    <string>    atom_typ_trip_map;    // [nmaps] "slow" maps, based on atom chemical symbol    // Used to build int map -- gives chemical symbol list (i.e. "SiOSiOOO")
-  vector       <int>    atom_idx_trip_map;    // [nmaps] "slow" maps, based on atom chemical symbol    // Used to build int map -- gives correspoding parameter index (i.e. 3)
-  vector       <int>    atom_int_trip_map;    // [nmaps] "fast" maps, based on atom type index         // gives the correspoding parameter index (i.e. 3) for a unique integer built from type index of three atoms of arbitrary order
-  vector<vector<int> >   pair_int_trip_map;  // Gives the atom pair indices for an arbitrary triplet of atom types.
+  //vector<string> atom_typ_trip_map;    // [nmaps] "slow" maps, based on atom chemical symbol    // Used to build int map -- gives chemical symbol list (i.e. "SiOSiOOO")
+  //typename AT::t_int_1d d_atom_idx_trip_map;    // [nmaps] "slow" maps, based on atom chemical symbol    // Used to build int map -- gives correspoding parameter index (i.e. 3)
+  typename AT::t_int_1d d_atom_int_trip_map;    // [nmaps] "fast" maps, based on atom type index         // gives the correspoding parameter index (i.e. 3) for a unique integer built from type index of three atoms of arbitrary order
+  typename AT::t_int_2d d_pair_int_trip_map;  // Gives the atom pair indices for an arbitrary triplet of atom types.
 
   // 4-body maps
 
-  vector    <string>    atom_typ_quad_map;    // [nmaps] "slow" maps, based on atom chemical symbol    // Used to build int map -- gives chemical symbol list (i.e. "SiOSiOOO")
-  vector      <int>        atom_idx_quad_map; // [nmaps] "slow" maps, based on atom chemical symbol    // Used to build int map -- gives correspoding parameter index (i.e. 3)
-  vector      <int>        atom_int_quad_map; // [nmaps] "fast" maps, based on atom type index         // gives the correspoding parameter index (i.e. 3) for a unique integer built from type index of four atoms of arbitrary order
-  vector<vector<int> >    pair_int_quad_map;  // Gives the atom pair indices for an arbitrary quad of atom types.
+  //vector<string> atom_typ_quad_map;    // [nmaps] "slow" maps, based on atom chemical symbol    // Used to build int map -- gives chemical symbol list (i.e. "SiOSiOOO")
+  //typename AT::t_int_1d d_atom_idx_quad_map; // [nmaps] "slow" maps, based on atom chemical symbol    // Used to build int map -- gives correspoding parameter index (i.e. 3)
+  typename AT::t_int_1d d_atom_int_quad_map; // [nmaps] "fast" maps, based on atom type index         // gives the correspoding parameter index (i.e. 3) for a unique integer built from type index of four atoms of arbitrary order
+  typename AT::t_int_2d d_pair_int_quad_map;  // Gives the atom pair indices for an arbitrary quad of atom types.
 
   ////////////////////////
   // Polynomial parameters
@@ -206,23 +218,22 @@ private:
 
   // number of coefficients for the pair/triplet/quadruplet type
 
-  vector          <int>   ncoeffs_2b;        // [npairs]
+  typename AT::t_int_1d d_ncoeffs_2b;        // [npairs]
 
-  vector<vector<int>    > chimes_2b_pows;    // [npairs][npowers] power for the coresponding parameter
+  typename AT::t_int_2d d_chimes_2b_pows;    // [npairs][npowers] power for the coresponding parameter
 
-  vector<typename AT::t_kkfloat_1d > chimes_2b_params;    // [npairs][npowers] 2-body polynomial coefficients
-  vector<typename AT::t_kkfloat_1d > chimes_2b_cutoff;    // [npairs][2] inner and outer cutoff for pair
+  typename AT::t_kkfloat_2d d_chimes_2b_params;    // [npairs][npowers] 2-body polynomial coefficients
+  typename AT::t_kkfloat_1d_2 d_chimes_2b_cutoff;  // [npairs][2] inner and outer cutoff for pair
 
-  vector<int>                      ncoeffs_3b;          // [ntrips]
-  vector<vector<vector<int> > >    chimes_3b_powers;    // [ntrips][nparams][constit. pair]
-  vector<typename AT::t_kkfloat_1d >          chimes_3b_params;    // [ntrips][nparams]
-  vector<vector<typename AT::t_kkfloat_1d > > chimes_3b_cutoff;    // [ntrips][2][constit. pair] inner and outer cutoff for pair 1
+  typename AT::t_int_1d d_ncoeffs_3b;              // [ntrips]
+  typename AT::t_kkfloat_3d d_chimes_3b_powers;    // [ntrips][nparams][constit. pair]
+  typename AT::t_kkfloat_2d d_chimes_3b_params;    // [ntrips][nparams]
+  typename AT::t_kkfloat_3d d_chimes_3b_cutoff;    // [ntrips][2][constit. pair] inner and outer cutoff for pair 1
 
-
-  vector<int>                      ncoeffs_4b;          // [nquads]
-  vector<vector<vector<int> > >    chimes_4b_powers;    // [nquads][nparams][constit. pair]
-  vector<typename AT::t_kkfloat_1d >          chimes_4b_params;    // [nquads][nparams]
-  vector<vector<typename AT::t_kkfloat_1d > > chimes_4b_cutoff;    // [nquads][2][constit. pair] inner and outer cutoff for pair 1
+  typename AT::t_int_1d d_ncoeffs_4b;          // [nquads]
+  typename AT::t_int_3d d_chimes_4b_powers;    // [nquads][nparams][constit. pair]
+  typename AT::t_kkfloat_2d d_chimes_4b_params;    // [nquads][nparams]
+  typename AT::t_kkfloat_3d d_chimes_4b_cutoff;    // [nquads][2][constit. pair] inner and outer cutoff for pair 1
 
   // Tools for compute functions
 
@@ -230,43 +241,43 @@ private:
   void set_cheby_polys(typename AT::t_kkfloat_1d &Tn, typename AT::t_kkfloat_1d &Tnd, KK_FLOAT dx, const KK_FLOAT morse,
                        const KK_FLOAT inner_cutoff, const KK_FLOAT outer_cutoff, const int order) const;
 
+  KOKKOS_INLINE_FUNCTION
   void set_polys_out_of_range(typename AT::t_kkfloat_1d &d_Tn, typename AT::t_kkfloat_1d &d_Tnd, KK_FLOAT dx, KK_FLOAT x,
-                              int poly_order, KK_FLOAT inner_cutoff, KK_FLOAT exprlen, KK_FLOAT dx_dr);
+                              int poly_order, KK_FLOAT inner_cutoff, KK_FLOAT exprlen, KK_FLOAT dx_dr) const;
 
-  inline void get_fcut(const KK_FLOAT dx, const KK_FLOAT outer_cutoff, KK_FLOAT & fcut, KK_FLOAT & fcutderiv);
+  KOKKOS_INLINE_FUNCTION
+  void get_fcut(const KK_FLOAT dx, const KK_FLOAT outer_cutoff, KK_FLOAT & fcut, KK_FLOAT & fcutderiv) const;
 
-  inline void get_penalty(const KK_FLOAT dx, const int & pair_idx, KK_FLOAT & E_penalty, KK_FLOAT & force_scalar);
+  KOKKOS_INLINE_FUNCTION
+  void get_penalty(const KK_FLOAT dx, const int & pair_idx, KK_FLOAT & E_penalty, KK_FLOAT & force_scalar) const;
 
-  inline void build_atom_and_pair_mappers(const int natoms, const int npairs, const vector<int> & typ_idxs,
-                                          const vector<string> & clu_params_atm_chems, vector<int >  & mapped_pair_idx);
-
-  inline void build_atom_and_pair_mappers(const int natoms, const int npairs, const vector<int> & typ_idxs, const vector<string> & clu_params_atm_chems,
-                                          int *mapped_pair_idx);
-
-  int get_proper_pair(string ty1, string ty2);
-
-  KK_FLOAT max_cutoff(int ntypes, vector<vector<typename AT::t_kkfloat_1d > > & cutoff_list);
+  //int get_proper_pair(string ty1, string ty2);
 
   // Tools for reading the input file
 
-  int split_line(string line, vector<string> & items);
+  //int split_line(string line, vector<string> & items);
 
-  string get_next_line(istream& str);
+  //string get_next_line(istream& str);
 
   // Fun stuff
 
-  void print_pretty_stuff();
+  //void print_pretty_stuff();
 
-  inline KK_FLOAT dr2_3B(const KK_FLOAT *dr2, int i, int j, int k, int l);
-  inline KK_FLOAT dr2_4B(const KK_FLOAT *dr2, int i, int j, int k, int l);
-  inline void init_distance_tensor(KK_FLOAT *dr2, typename AT::t_kkfloat_1d & dr, int natoms);
+  KOKKOS_INLINE_FUNCTION
+  KK_FLOAT dr2_3B(const KK_FLOAT* dr2, int i, int j, int k, int l) const;
+
+  KOKKOS_INLINE_FUNCTION
+  KK_FLOAT dr2_4B(const KK_FLOAT* dr2, int i, int j, int k, int l) const;
+
+  KOKKOS_INLINE_FUNCTION
+  void init_distance_tensor(KK_FLOAT* dr2, const KK_FLOAT* dr, int natoms) const;
 };
 
 /* ---------------------------------------------------------------------- */
 
 template<class DeviceType>
 KOKKOS_INLINE_FUNCTION
-void chimesFFKokkos<DeviceType>::get_fcut(const KK_FLOAT dx, const KK_FLOAT outer_cutoff, KK_FLOAT & fcut, KK_FLOAT & fcutderiv)
+void chimesFFKokkos<DeviceType>::get_fcut(const KK_FLOAT dx, const KK_FLOAT outer_cutoff, KK_FLOAT & fcut, KK_FLOAT & fcutderiv) const
 {
   KK_FLOAT fcut0;
   KK_FLOAT fcut0_deriv;
@@ -305,7 +316,7 @@ void chimesFFKokkos<DeviceType>::get_fcut(const KK_FLOAT dx, const KK_FLOAT oute
 
 template<class DeviceType>
 KOKKOS_INLINE_FUNCTION
-void chimesFFKokkos<DeviceType>::get_penalty(const KK_FLOAT dx, const int& pair_idx, KK_FLOAT& E_penalty, KK_FLOAT& force_scalar)
+void chimesFFKokkos<DeviceType>::get_penalty(const KK_FLOAT dx, const int& pair_idx, KK_FLOAT& E_penalty, KK_FLOAT& force_scalar) const
 {
   KK_FLOAT r_penalty = 0.0;
 
@@ -315,10 +326,10 @@ void chimesFFKokkos<DeviceType>::get_penalty(const KK_FLOAT dx, const int& pair_
   if (dx - penalty_params[0] < chimes_2b_cutoff[pair_idx][0]) { // Then we're within the penalty-enforced region of distance space
     r_penalty = chimes_2b_cutoff[pair_idx][0] + penalty_params[0] - dx;
 
-    if (dx < chimes_2b_cutoff[pair_idx][0])
+    /*if (dx < chimes_2b_cutoff[pair_idx][0])
       badness = 2;
-    else if (1 > badness) // Only update badness if candiate badness is worse than its current value
-      badness = 1;
+    else if (1 > this->badness) // Only update badness if candiate badness is worse than its current value
+      badness = 1;*/
   }
 
   if (r_penalty > 0.0) {
@@ -335,127 +346,6 @@ void chimesFFKokkos<DeviceType>::get_penalty(const KK_FLOAT dx, const int& pair_
         cout << "chimesFFKokkos: " << "\t...Penalty potential = "<< E_penalty << endl;
     //}
   }
-}
-
-template<class DeviceType>
-inline int chimesFFKokkos<DeviceType>::get_badness()
-{
-  return badness;
-}
-
-template<class DeviceType>
-inline void chimesFFKokkos<DeviceType>::reset_badness()
-{
-  badness = 0;
-}
-
-template<class DeviceType>
-inline void chimesFFKokkos<DeviceType>::build_atom_and_pair_mappers(const int natoms, const int npairs, const vector<int> & typ_idxs,
-                                                  const vector<string> & clu_params_pair_typs, vector<int>  & mapped_pair_idx)
-// Interface to array-based version
-
-{
-  build_atom_and_pair_mappers(natoms, npairs, typ_idxs, clu_params_pair_typs, mapped_pair_idx.data());
-}
-
-template<class DeviceType>
-inline void chimesFFKokkos<DeviceType>::build_atom_and_pair_mappers(const int natoms, const int npairs, const vector<int> & typ_idxs,
-                                                  const vector<string> & clu_params_pair_typs,
-                                                  int *mapped_pair_idx)
-{
-  // Generate permutations for atoms... all we are doing is permuting the possible indices for typ_idxs
-
-  // build a copy of the atom type vector for permuting
-
-  vector<int> tmp_typ_idxs;
-  int         nelements;
-
-  nelements = typ_idxs.size();
-  tmp_typ_idxs.resize(nelements);
-
-  for (int i=0; i<nelements; i++)
-      tmp_typ_idxs[i] = i;
-
-  // Build a copy of the original pairs for comparison against permuted pairs
-
-
-  vector<vector<int> > tmp_pairs;
-  tmp_pairs.resize(npairs,vector<int>(2));
-  vector<vector<int> > runtime_pairs;
-  runtime_pairs.resize(npairs,vector<int>(2));
-
-  int idx = 0;
-
-  for(int i=0; i<natoms; i++)
-  {
-
-    for (int j=i+1; j<natoms; j++)
-    {
-      tmp_pairs[idx][0] = i;
-      tmp_pairs[idx][1] = j;
-
-      idx++;
-    }
-  }
-
-  vector<string> runtime_pair_typs(npairs);
-
-  do
-  {
-    // Check if the permutation leads to pair types that match the order specified by the force field type
-
-    idx = 0;
-
-    for(int i=0; i<natoms; i++) // Associate the current atom pairs with a "proper" 2-body force field name
-    {
-      for (int j=i+1; j<natoms; j++)
-      {
-        runtime_pair_typs[idx] = atom_int_prpr_map[ typ_idxs[tmp_typ_idxs[i]]*natmtyps + typ_idxs[tmp_typ_idxs[j]] ];
-
-        idx++;
-      }
-    }
-
-    bool match = true;
-
-    for (int i=0; i<npairs; i++)
-    {
-      if (clu_params_pair_typs[i] != runtime_pair_typs[i])
-      {
-        match = false;
-        break;
-      }
-    }
-
-    if (match) // Then we've found an appropriate atom ordering... now what?
-    {
-      idx = 0;
-
-      for(int i=0; i<natoms; i++) // Associate the current atom pairs with a "proper" 2-body force field name
-      {
-        for (int j=i+1; j<natoms; j++)
-        {
-          runtime_pairs[idx][0] = tmp_typ_idxs[i];
-          runtime_pairs[idx][1] = tmp_typ_idxs[j];
-
-          idx++;
-        }
-      }
-
-      break;
-    }
-
-  } while (next_permutation(tmp_typ_idxs.begin(),tmp_typ_idxs.begin()+nelements));
-
-  // Once we've found a re-ordering of atoms that properly maps to the force field pair types, need to figure out how to convert that to a map between *pairs*
-
-  idx = 0;
-
-  for (int i = 0; i < npairs; i++)
-    for (int j = 0; j < npairs; j++)
-      if (((runtime_pairs[i][0] == tmp_pairs[j][0]) && (runtime_pairs[i][1] == tmp_pairs[j][1]))
-             || ((runtime_pairs[i][0] == tmp_pairs[j][1]) && (runtime_pairs[i][1] == tmp_pairs[j][0])))
-      mapped_pair_idx[j] = i;
 }
 
 template<class DeviceType>

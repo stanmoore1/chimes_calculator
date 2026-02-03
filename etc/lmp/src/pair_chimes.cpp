@@ -120,8 +120,8 @@ PairCHIMES::~PairCHIMES()
 	    memory->destroy(cutsq);
 	}
     
-    if (badness_stream.is_open())
-        badness_stream.close();
+    //if (badness_stream.is_open())
+    //    badness_stream.close();
 
   delete chimes_calculator;
 }	
@@ -138,7 +138,7 @@ void PairCHIMES::settings(int narg, char **arg)
             for_fitting   = true;
             stringstream ss;
             ss << chimes_calculator->rank;
-            badness_stream.open("rank-" + ss.str() + ".badness.log");    
+            //badness_stream.open("rank-" + ss.str() + ".badness.log");    
         }
     }
 	#ifdef FINGERPRINT
@@ -171,7 +171,7 @@ void PairCHIMES::settings(int narg, char **arg)
             for_fitting   = true;
             stringstream ss;
             ss << chimes_calculator->rank;
-            badness_stream.open("rank-" + ss.str() + ".badness.log");  
+            //badness_stream.open("rank-" + ss.str() + ".badness.log");  
         }
     }
 	#endif
@@ -669,8 +669,8 @@ void PairCHIMES::compute(int eflag, int vflag)
 
     // Document badness for configuration: current timestep, current rank, worst badness seen by rank
     if (for_fitting)
-        if(update->ntimestep % output->every_dump[0] == 0)
-            badness_stream << update->ntimestep << " " <<  chimes_calculator->get_badness() << endl;
+        //if(update->ntimestep % output->every_dump[0] == 0)
+        //    badness_stream << update->ntimestep << " " <<  chimes_calculator->get_badness() << endl;
 
 	// if (chimes_calculator->poly_orders[1] > 0 || tmp_FP)
 	if (chimes_calculator->poly_orders[1] > 0)

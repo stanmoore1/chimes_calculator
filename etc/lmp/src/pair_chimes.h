@@ -76,7 +76,7 @@ namespace LAMMPS_NS
             bool     for_fitting;
             bool     fingerprint;
 			int IO_freq;
-            ofstream badness_stream;			
+            //ofstream badness_stream;			
 
 			// 2-body vars for chimesFF access
 

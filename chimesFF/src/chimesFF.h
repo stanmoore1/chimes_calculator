@@ -19,7 +19,7 @@
 #include<cmath>
 #include<map>
 
-#define pi 3.14159265359
+#define CHIMES_PI 3.14159265359
 
 using namespace std;
 
@@ -226,7 +226,7 @@ public:
     double get_tab_3B(int tripidx, const std::string& pairtyp_ij, const std::string& pairtyp_ik, const std::string& pairtyp_jk,  double rij, double rik, double rjk, double (&force_scalar)[3]);
     #endif
     
-private:
+protected:
         
     string            xform_style;    //  Morse, direct, inverse, etc...
     fcutType          fcut_type;      // cutoff function style (tersoff/cubic)
@@ -376,8 +376,8 @@ inline void chimesFF::get_fcut(const double dx, const double outer_cutoff, doubl
         }                    
         else                // Case 3: We'll use our modified sin function
         {
-            fcut0       = (dx-THRESH) / (outer_cutoff-THRESH) * pi + pi/2.0;
-            fcut0_deriv = pi / (outer_cutoff - THRESH);
+            fcut0       = (dx-THRESH) / (outer_cutoff-THRESH) * CHIMES_PI + CHIMES_PI/2.0;
+            fcut0_deriv = CHIMES_PI / (outer_cutoff - THRESH);
             
             fcut        = 0.5 + 0.5 * sin( fcut0 );
             fcutderiv  = 0.5 * cos( fcut0 ) * fcut0_deriv; 
