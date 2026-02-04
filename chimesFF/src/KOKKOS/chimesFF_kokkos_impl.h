@@ -18,6 +18,7 @@
 using namespace std;
 
 #include "chimesFF_kokkos.h"
+#include "memory_kokkos.h"
 
 /* ---------------------------------------------------------------------- */
 
@@ -33,6 +34,356 @@ template<class DeviceType>
 chimesFFKokkos<DeviceType>::~chimesFFKokkos()
 {
 
+}
+
+/* ---------------------------------------------------------------------- */
+
+template<class DeviceType>
+void chimesFFKokkos<DeviceType>::read_parameters(string paramfile)
+{
+  int size, max_j, max_k;
+
+  chimesFF::read_parameters(paramfile);
+
+
+  // poly_orders
+
+  size = poly_orders.size();
+  LAMMPS_NS::MemKK::realloc_kokkos(d_poly_orders,"chimesFF:poly_orders",size);
+
+  auto h_poly_orders = Kokkos::create_mirror_view(d_poly_orders);
+
+  for (int i = 0; i < size; i++)
+    h_poly_orders[i] = poly_orders[i];
+
+  Kokkos::deep_copy(d_poly_orders,h_poly_orders);
+
+
+  // morse_var
+
+  size = morse_var.size();
+  LAMMPS_NS::MemKK::realloc_kokkos(d_morse_var,"chimesFF:morse_var",size);
+
+  auto h_morse_var = Kokkos::create_mirror_view(d_morse_var);
+
+  for (int i = 0; i < size; i++)
+    h_morse_var[i] = morse_var[i];
+
+  Kokkos::deep_copy(d_morse_var,h_morse_var);
+
+
+  // ncoeffs_2b
+
+  size = ncoeffs_2b.size();
+  LAMMPS_NS::MemKK::realloc_kokkos(d_ncoeffs_2b,"chimesFF:ncoeffs_2b",size);
+
+  auto h_ncoeffs_2b = Kokkos::create_mirror_view(d_ncoeffs_2b);
+
+  for (int i = 0; i < size; i++)
+    h_ncoeffs_2b[i] = ncoeffs_2b[i];
+
+  Kokkos::deep_copy(d_ncoeffs_2b,h_ncoeffs_2b);
+
+
+  // chimes_2b_pows
+
+  size = chimes_2b_pows.size();
+  max_j = 0;
+  for (int i = 0; i < size; i++)
+    max_j = MAX(max_j,chimes_2b_pows[i].size());
+
+  LAMMPS_NS::MemKK::realloc_kokkos(d_chimes_2b_pows,"chimesFF:chimes_2b_pows",size,max_j);
+
+  auto h_chimes_2b_pows = Kokkos::create_mirror_view(d_chimes_2b_pows);
+
+  for (int i = 0; i < size; i++) {
+    int size_j = chimes_2b_pows[i].size();
+    for (int j = 0; j < size_j; j++) {
+      h_chimes_2b_pows(i,j) = chimes_2b_pows[i][j];
+    }
+  }
+
+  Kokkos::deep_copy(d_chimes_2b_pows,h_chimes_2b_pows);
+
+
+  // chimes_2b_params
+
+  size = chimes_2b_params.size();
+  max_j = 0;
+  for (int i = 0; i < size; i++)
+    max_j = MAX(max_j,chimes_2b_params[i].size());
+
+  LAMMPS_NS::MemKK::realloc_kokkos(d_chimes_2b_params,"chimesFF:chimes_2b_params",size,max_j);
+
+  auto h_chimes_2b_params = Kokkos::create_mirror_view(d_chimes_2b_params);
+
+  for (int i = 0; i < size; i++) {
+    int size_j = chimes_2b_params[i].size();
+    for (int j = 0; j < size_j; j++) {
+      h_chimes_2b_params(i,j) = chimes_2b_params[i][j];
+    }
+  }
+
+  Kokkos::deep_copy(d_chimes_2b_params,h_chimes_2b_params);
+
+
+  // chimes_2b_cutoff
+
+  size = chimes_2b_cutoff.size();
+  LAMMPS_NS::MemKK::realloc_kokkos(d_chimes_2b_cutoff,"chimesFF:chimes_2b_cutoff",size);
+
+  auto h_chimes_2b_cutoff = Kokkos::create_mirror_view(d_chimes_2b_cutoff);
+
+  for (int i = 0; i < size; i++) {
+    h_chimes_2b_cutoff(i,0) = chimes_2b_cutoff[i][0];
+    h_chimes_2b_cutoff(i,1) = chimes_2b_cutoff[i][1];
+  }
+
+  Kokkos::deep_copy(d_chimes_2b_cutoff,h_chimes_2b_cutoff);
+
+
+  // ncoeffs_3b
+
+  size = ncoeffs_3b.size();
+  LAMMPS_NS::MemKK::realloc_kokkos(d_ncoeffs_3b,"chimesFF:ncoeffs_3b",size);
+
+  auto h_ncoeffs_3b = Kokkos::create_mirror_view(d_ncoeffs_3b);
+
+  for (int i = 0; i < size; i++)
+    h_ncoeffs_3b[i] = ncoeffs_3b[i];
+
+  Kokkos::deep_copy(d_ncoeffs_3b,h_ncoeffs_3b);
+
+
+  // chimes_3b_powers
+
+  size = chimes_3b_powers.size();
+  max_j = 0;
+  max_k = 0;
+  for (int i = 0; i < size; i++) {
+    int size_j = chimes_3b_powers[i].size();
+    max_j = MAX(max_j,size_j);
+    for (int j = 0; j < size_j; j++) {
+      int size_k = chimes_3b_powers[i][j].size();
+      max_k = MAX(max_k,size_k);
+    }
+  }
+
+  LAMMPS_NS::MemKK::realloc_kokkos(d_chimes_3b_powers,"chimesFF:chimes_3b_powers",size,max_j,max_k);
+
+  auto h_chimes_3b_powers = Kokkos::create_mirror_view(d_chimes_3b_powers);
+
+  for (int i = 0; i < size; i++) {
+    int size_j = chimes_3b_powers[i].size();
+    for (int j = 0; j < size_j; j++) {
+      int size_k = chimes_3b_powers[i][j].size();
+      for (int k = 0; k < size_k; k++) {
+        h_chimes_3b_powers(i,j,k) = chimes_3b_powers[i][j][k];
+      }
+    }
+  }
+
+  Kokkos::deep_copy(d_chimes_3b_powers,h_chimes_3b_powers);
+
+
+  // chimes_3b_params
+
+  size = chimes_3b_params.size();
+  max_j = 0;
+  for (int i = 0; i < size; i++)
+    max_j = MAX(max_j,chimes_3b_params[i].size());
+
+  LAMMPS_NS::MemKK::realloc_kokkos(d_chimes_3b_params,"chimesFF:chimes_3b_params",size,max_j);
+
+  auto h_chimes_3b_params = Kokkos::create_mirror_view(d_chimes_3b_params);
+
+  for (int i = 0; i < size; i++) {
+    int size_j = chimes_3b_params[i].size();
+    for (int j = 0; j < size_j; j++) {
+      h_chimes_3b_params(i,j) = chimes_3b_params[i][j];
+    }
+  }
+
+  Kokkos::deep_copy(d_chimes_3b_params,h_chimes_3b_params);
+
+
+  // chimes_3b_cutoff
+
+  size = chimes_3b_cutoff.size();
+  max_j = 0;
+  max_k = 0;
+  for (int i = 0; i < size; i++) {
+    int size_j = chimes_3b_cutoff[i].size();
+    max_j = MAX(max_j,size_j);
+    for (int j = 0; j < size_j; j++) {
+      int size_k = chimes_3b_cutoff[i][j].size();
+      max_k = MAX(max_k,size_k);
+    }
+  }
+
+  LAMMPS_NS::MemKK::realloc_kokkos(d_chimes_3b_cutoff,"chimesFF:chimes_3b_cutoff",size,max_j,max_k);
+
+  auto h_chimes_3b_cutoff = Kokkos::create_mirror_view(d_chimes_3b_cutoff);
+
+  for (int i = 0; i < size; i++) {
+    int size_j = chimes_3b_cutoff[i].size();
+    for (int j = 0; j < size_j; j++) {
+      int size_k = chimes_3b_cutoff[i][j].size();
+      for (int k = 0; k < size_k; k++) {
+        h_chimes_3b_cutoff(i,j,k) = chimes_3b_cutoff[i][j][k];
+      }
+    }
+  }
+
+  Kokkos::deep_copy(d_chimes_3b_cutoff,h_chimes_3b_cutoff);
+
+
+  // ncoeffs_4b
+
+  size = ncoeffs_4b.size();
+  LAMMPS_NS::MemKK::realloc_kokkos(d_ncoeffs_4b,"chimesFF:ncoeffs_4b",size);
+
+  auto h_ncoeffs_4b = Kokkos::create_mirror_view(d_ncoeffs_4b);
+
+  for (int i = 0; i < size; i++)
+    h_ncoeffs_4b[i] = ncoeffs_4b[i];
+
+  Kokkos::deep_copy(d_ncoeffs_4b,h_ncoeffs_4b);
+
+
+  // chimes_4b_powers
+
+  size = chimes_4b_powers.size();
+  max_j = 0;
+  max_k = 0;
+  for (int i = 0; i < size; i++) {
+    int size_j = chimes_4b_powers[i].size();
+    max_j = MAX(max_j,size_j);
+    for (int j = 0; j < size_j; j++) {
+      int size_k = chimes_4b_powers[i][j].size();
+      max_k = MAX(max_k,size_k);
+    }
+  }
+
+  LAMMPS_NS::MemKK::realloc_kokkos(d_chimes_4b_powers,"chimesFF:chimes_4b_powers",size,max_j,max_k);
+
+  auto h_chimes_4b_powers = Kokkos::create_mirror_view(d_chimes_4b_powers);
+
+  for (int i = 0; i < size; i++) {
+    int size_j = chimes_4b_powers[i].size();
+    for (int j = 0; j < size_j; j++) {
+      int size_k = chimes_4b_powers[i][j].size();
+      for (int k = 0; k < size_k; k++) {
+        h_chimes_4b_powers(i,j,k) = chimes_4b_powers[i][j][k];
+      }
+    }
+  }
+
+  Kokkos::deep_copy(d_chimes_4b_powers,h_chimes_4b_powers);
+
+
+  // chimes_4b_params
+
+  size = chimes_4b_params.size();
+  max_j = 0;
+  for (int i = 0; i < size; i++)
+    max_j = MAX(max_j,chimes_4b_params[i].size());
+
+  LAMMPS_NS::MemKK::realloc_kokkos(d_chimes_4b_params,"chimesFF:chimes_4b_params",size,max_j);
+
+  auto h_chimes_4b_params = Kokkos::create_mirror_view(d_chimes_4b_params);
+
+  for (int i = 0; i < size; i++) {
+    int size_j = chimes_4b_params[i].size();
+    for (int j = 0; j < size_j; j++) {
+      h_chimes_4b_params(i,j) = chimes_4b_params[i][j];
+    }
+  }
+
+  Kokkos::deep_copy(d_chimes_4b_params,h_chimes_4b_params);
+
+
+  // chimes_4b_cutoff
+
+  size = chimes_4b_cutoff.size();
+  max_j = 0;
+  max_k = 0;
+  for (int i = 0; i < size; i++) {
+    int size_j = chimes_4b_cutoff[i].size();
+    max_j = MAX(max_j,size_j);
+    for (int j = 0; j < size_j; j++) {
+      int size_k = chimes_4b_cutoff[i][j].size();
+      max_k = MAX(max_k,size_k);
+    }
+  }
+
+  LAMMPS_NS::MemKK::realloc_kokkos(d_chimes_4b_cutoff,"chimesFF:chimes_4b_cutoff",size,max_j,max_k);
+
+  auto h_chimes_4b_cutoff = Kokkos::create_mirror_view(d_chimes_4b_cutoff);
+
+  for (int i = 0; i < size; i++) {
+    int size_j = chimes_4b_cutoff[i].size();
+    for (int j = 0; j < size_j; j++) {
+      int size_k = chimes_4b_cutoff[i][j].size();
+      for (int k = 0; k < size_k; k++) {
+        h_chimes_4b_cutoff(i,j,k) = chimes_4b_cutoff[i][j][k];
+      }
+    }
+  }
+
+  Kokkos::deep_copy(d_chimes_4b_cutoff,h_chimes_4b_cutoff);
+
+
+  // energy_offsets
+
+  size = energy_offsets.size();
+  LAMMPS_NS::MemKK::realloc_kokkos(d_energy_offsets,"chimesFF:energy_offsets",size);
+
+  auto h_energy_offsets = Kokkos::create_mirror_view(d_energy_offsets);
+
+  for (int i = 0; i < size; i++)
+    h_energy_offsets[i] = energy_offsets[i];
+
+  Kokkos::deep_copy(d_energy_offsets,h_energy_offsets);
+
+
+  // atom_int_pair_map
+
+  size = atom_int_pair_map.size();
+  LAMMPS_NS::MemKK::realloc_kokkos(d_atom_int_pair_map,"chimesFF:atom_int_pair_map",size);
+
+  auto h_atom_int_pair_map = Kokkos::create_mirror_view(d_atom_int_pair_map);
+
+  for (int i = 0; i < size; i++)
+    h_atom_int_pair_map[i] = atom_int_pair_map[i];
+
+  Kokkos::deep_copy(d_atom_int_pair_map,h_atom_int_pair_map);
+
+
+  // atom_int_trip_map
+
+  size = atom_int_trip_map.size();
+  LAMMPS_NS::MemKK::realloc_kokkos(d_atom_int_trip_map,"chimesFF:",size);
+
+  auto h_atom_int_trip_map = Kokkos::create_mirror_view(d_atom_int_trip_map);
+
+  for (int i = 0; i < size; i++)
+    h_atom_int_trip_map[i] = atom_int_trip_map[i];
+
+  Kokkos::deep_copy(d_atom_int_trip_map,h_atom_int_trip_map);
+
+
+  // atom_int_quad_map
+
+  size = atom_int_quad_map.size();
+  LAMMPS_NS::MemKK::realloc_kokkos(d_atom_int_quad_map,"chimesFF:",size);
+
+  auto h_atom_int_quad_map = Kokkos::create_mirror_view(d_atom_int_quad_map);
+
+  for (int i = 0; i < size; i++)
+    h_atom_int_quad_map[i] = atom_int_quad_map[i];
+
+  Kokkos::deep_copy(d_atom_int_quad_map,h_atom_int_quad_map);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -862,4 +1213,68 @@ void chimesFFKokkos<DeviceType>::compute_4B(const KK_FLOAT* dx, const KK_FLOAT* 
   force_scalar_in[3] = force_scalar[3];
   force_scalar_in[4] = force_scalar[4];
   force_scalar_in[5] = force_scalar[5];
+}
+
+/* ---------------------------------------------------------------------- */
+
+template<class DeviceType>
+KOKKOS_INLINE_FUNCTION
+void chimesFFKokkos<DeviceType>::build_pair_int_quad_map()
+// Build the pair maps for all possible quads.  Moved build_atom_and_pair_mappers out of the compute_XX routines
+// to support GPU environment without string operations.
+// This must be called prior to force evaluation.
+{
+  chimesFF::build_pair_int_quad_map();
+
+  // pair_int_quad_map
+
+  int size = pair_int_quad_map.size();
+  int max_j = 0;
+  for (int i = 0; i < size; i++)
+    max_j = MAX(max_j,pair_int_quad_map[i].size());
+
+  LAMMPS_NS::MemKK::realloc_kokkos(d_pair_int_quad_map,"chimesFF:pair_int_quad_map",size,max_j);
+
+  auto h_pair_int_quad_map = Kokkos::create_mirror_view(d_pair_int_quad_map);
+
+  for (int i = 0; i < size; i++) {
+    int size_j = pair_int_quad_map[i].size();
+    for (int j = 0; j < size_j; j++) {
+      h_pair_int_quad_map(i,j) = pair_int_quad_map[i][j];
+    }
+  }
+
+  Kokkos::deep_copy(d_pair_int_quad_map,h_pair_int_quad_map);
+}
+
+/* ---------------------------------------------------------------------- */
+
+template<class DeviceType>
+KOKKOS_INLINE_FUNCTION
+void chimesFFKokkos<DeviceType>::build_pair_int_trip_map()
+// Build the pair maps for all possible triplets.  Moved build_atom_and_pair_mappers out of the compute_XX routines
+// to support GPU environment without string operations.
+// This must be called prior to force evaluation.
+{
+  chimesFF::build_pair_int_trip_map();
+
+  // pair_int_trip_map
+
+  int size = pair_int_trip_map.size();
+  int max_j = 0;
+  for (int i = 0; i < size; i++)
+    max_j = MAX(max_j,pair_int_trip_map[i].size());
+
+  LAMMPS_NS::MemKK::realloc_kokkos(d_pair_int_trip_map,"chimesFF:pair_int_trip_map",size,max_j);
+
+  auto h_pair_int_trip_map = Kokkos::create_mirror_view(d_pair_int_trip_map);
+
+  for (int i = 0; i < size; i++) {
+    int size_j = pair_int_trip_map[i].size();
+    for (int j = 0; j < size_j; j++) {
+      h_pair_int_trip_map(i,j) = pair_int_trip_map[i][j];
+    }
+  }
+
+  Kokkos::deep_copy(d_pair_int_trip_map,h_pair_int_trip_map);
 }

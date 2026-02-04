@@ -183,8 +183,8 @@ public:
     void set_atomtypes(vector<string> & type_list);
     
     int get_atom_pair_index(int pair_id);
-    void build_pair_int_trip_map() ;
-    void build_pair_int_quad_map() ;
+    virtual void build_pair_int_trip_map() ;
+    virtual void build_pair_int_quad_map() ;
     
     // Functions to aid using ChIMES Calculator for fitting
     

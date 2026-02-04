@@ -114,6 +114,8 @@ PairCHIMES::PairCHIMES(LAMMPS *lmp) : Pair(lmp)
 
 PairCHIMES::~PairCHIMES()
 {
+  if (copymode) return;
+
 	if (allocated) 
 	{   	    
 	    memory->destroy(setflag);

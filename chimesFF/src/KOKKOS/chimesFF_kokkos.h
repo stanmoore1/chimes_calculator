@@ -143,8 +143,6 @@ class chimesFFKokkos : public chimesFF
   ////////////////////////
 
   typename AT::t_int_1d d_poly_orders;    // [bodiedness-1]; i.e. 12 = 2-body only, 12th order; 12 5 = 2+3-body, 0 5 = 3-body only, 5th order
-  //vector<string> atmtyps;                 // Atom types
-  //typename AT::t_kkfloat_1d d_masses;     // Atom masses
 
   ////////////////////////
   // Functions
@@ -152,6 +150,8 @@ class chimesFFKokkos : public chimesFF
 
   chimesFFKokkos();
   ~chimesFFKokkos();
+
+  void read_parameters(string paramfile) override;
 
   KOKKOS_INLINE_FUNCTION
   void compute_1B(const int typ_idx, KK_FLOAT & energy) const;
@@ -178,13 +178,12 @@ class chimesFFKokkos : public chimesFF
 
   // Functions to aid using ChIMES Calculator for fitting
 
-  //inline int get_badness();
-  //inline void reset_badness();
+  void build_pair_int_trip_map() override;
+  void build_pair_int_quad_map() override;
 
 private:
 
   typename AT::t_kkfloat_1d d_morse_var;      // [npairs]; morse_lambda
-  //typename AT::t_kkfloat_1d d_penalty_params; // [2];  Second dimension: [0] = A_pen, [1] = d_pen
   typename AT::t_kkfloat_1d d_energy_offsets; // [natmtyps]; Single atom ChIMES energies
 
   ////////////////////////
@@ -193,22 +192,15 @@ private:
 
   // 2-body maps
 
-  //vector<string> atom_typ_pair_map; // [nmaps] "slow" maps, based on atom chemical symbol    // Used to build int map -- gives chemical symbol list (i.e. "SiO")
-  //typename AT::t_int_1d d_atom_idx_pair_map; // [nmaps] "slow" maps, based on atom chemical symbol    // Used to build int map -- gives correspoding parameter index (i.e. 5)
   typename AT::t_int_1d d_atom_int_pair_map; // [nmaps] "fast" maps, based on atom type index
-  //vector<string> atom_int_prpr_map; // [nmaps] "fast" maps, based on atom type index ... returns the "proper" pair type instead of an index
 
   // 3-body maps
 
-  //vector<string> atom_typ_trip_map;    // [nmaps] "slow" maps, based on atom chemical symbol    // Used to build int map -- gives chemical symbol list (i.e. "SiOSiOOO")
-  //typename AT::t_int_1d d_atom_idx_trip_map;    // [nmaps] "slow" maps, based on atom chemical symbol    // Used to build int map -- gives correspoding parameter index (i.e. 3)
   typename AT::t_int_1d d_atom_int_trip_map;    // [nmaps] "fast" maps, based on atom type index         // gives the correspoding parameter index (i.e. 3) for a unique integer built from type index of three atoms of arbitrary order
   typename AT::t_int_2d d_pair_int_trip_map;  // Gives the atom pair indices for an arbitrary triplet of atom types.
 
   // 4-body maps
 
-  //vector<string> atom_typ_quad_map;    // [nmaps] "slow" maps, based on atom chemical symbol    // Used to build int map -- gives chemical symbol list (i.e. "SiOSiOOO")
-  //typename AT::t_int_1d d_atom_idx_quad_map; // [nmaps] "slow" maps, based on atom chemical symbol    // Used to build int map -- gives correspoding parameter index (i.e. 3)
   typename AT::t_int_1d d_atom_int_quad_map; // [nmaps] "fast" maps, based on atom type index         // gives the correspoding parameter index (i.e. 3) for a unique integer built from type index of four atoms of arbitrary order
   typename AT::t_int_2d d_pair_int_quad_map;  // Gives the atom pair indices for an arbitrary quad of atom types.
 
@@ -250,18 +242,6 @@ private:
 
   KOKKOS_INLINE_FUNCTION
   void get_penalty(const KK_FLOAT dx, const int & pair_idx, KK_FLOAT & E_penalty, KK_FLOAT & force_scalar) const;
-
-  //int get_proper_pair(string ty1, string ty2);
-
-  // Tools for reading the input file
-
-  //int split_line(string line, vector<string> & items);
-
-  //string get_next_line(istream& str);
-
-  // Fun stuff
-
-  //void print_pretty_stuff();
 
   KOKKOS_INLINE_FUNCTION
   KK_FLOAT dr2_3B(const KK_FLOAT* dr2, int i, int j, int k, int l) const;

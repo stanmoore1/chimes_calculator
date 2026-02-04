@@ -56,6 +56,7 @@ class PairCHIMESKokkos : public PairCHIMES
   PairCHIMESKokkos(class LAMMPS *);
   ~PairCHIMESKokkos() override;
   void init_style() override;
+  void coeff(int narg, char **arg) override;
   void allocate() override;
   void compute(int eflag, int vflag) override;
   void build_mb_neighlists() override;
@@ -100,6 +101,7 @@ class PairCHIMESKokkos : public PairCHIMES
   int neighflag;
   int inum, maxneigh, chunk_size, chunk_offset;
   int host_flag, max_3mers, max_4mers;
+  int size_3mers, size_4mers;
 
   KK_FLOAT maxcut_3b_padded, maxcut_4b_padded;
 
@@ -129,11 +131,9 @@ class PairCHIMESKokkos : public PairCHIMES
   typename AT::t_int_1d_3 d_neighborlist_3mers;
   typename AT::t_int_1d_4 d_neighborlist_4mers;
 
-  typename AT::t_int_1d d_3mers_num, d_4mers_num;
-  DAT::tdual_int_scalar k_resize_3mers, k_resize_4mers;
-  typename AT::t_int_scalar d_resize_3mers, d_resize_4mers;
+  typename AT::t_int_scalar d_size_3mers, d_size_4mers;
 
-  typename AT::t_int_1d d_force_2b, d_force_3b, d_force_4b;
+  //typename AT::t_int_1d d_force_2b, d_force_3b, d_force_4b;
 
   chimesFFKokkos<DeviceType> chimes_calculatorKK; // chimesFF instance
 
