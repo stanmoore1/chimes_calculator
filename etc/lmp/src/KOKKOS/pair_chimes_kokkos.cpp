@@ -39,9 +39,8 @@
 #include "update.h" // Needed for mb neighlist updates and info printing for fitting
 #include "output.h" // Needed for infor printing for fitting -- dump 1 must be the "main" dump file used for fitting
 #include "utils.h"  // Needed for infor printing for fitting
-#include <vector>
-#include <iostream>
-#include <sstream>
+//#include <iostream>
+//#include <sstream>
 #include <cstring>
 
 using namespace LAMMPS_NS;
@@ -68,6 +67,8 @@ PairCHIMESKokkos<DeviceType>::PairCHIMESKokkos(LAMMPS *lmp) : PairCHIMES(lmp)
 #endif
 
   chimes_calculatorKK.init(comm->me);   // chimesFF instance
+
+  chimes_calculator = (chimesFF*) (&chimes_calculatorKK);
 
   k_resize_3mers = DAT::tdual_int_scalar("pair:resize_3mers");
   d_resize_3mers = k_resize_3mers.view<DeviceType>();
@@ -413,9 +414,9 @@ void PairCHIMESKokkos<DeviceType>::compute(int eflag, int vflag)
     ndup_vatom = Kokkos::Experimental::create_scatter_view<Kokkos::Experimental::ScatterSum, Kokkos::Experimental::ScatterNonDuplicated>(d_vatom);
   }
 
-  chimes_2btmpKK = chimes2BTmpKokkos(chimes_calculatorKK.poly_orders[0]);
-  chimes_3btmpKK = chimes3BTmpKokkos(chimes_calculatorKK.poly_orders[1]);
-  chimes_4btmpKK = chimes4BTmpKokkos(chimes_calculatorKK.poly_orders[2]);
+  chimes_2btmpKK = typename chimesFFKokkos<DeviceType>::chimes2BTmpKokkos(chimes_calculatorKK.poly_orders[0]);
+  chimes_3btmpKK = typename chimesFFKokkos<DeviceType>::chimes3BTmpKokkos(chimes_calculatorKK.poly_orders[1]);
+  chimes_4btmpKK = typename chimesFFKokkos<DeviceType>::chimes4BTmpKokkos(chimes_calculatorKK.poly_orders[2]);
 
   // Build the ChIMES many-body neighbor lists.. only do so when LAMMPS neighborlist has been updated
 
@@ -478,9 +479,9 @@ void PairCHIMESKokkos<DeviceType>::compute(int eflag, int vflag)
 
     // Document badness for configuration: current timestep, current rank, worst badness seen by rank
 
-    if (for_fitting)
-    if (update->ntimestep % output->every_dump[0] == 0)
-      badness_stream << update->ntimestep << " " <<  chimes_calculatorKK.get_badness() << endl;
+//    if (for_fitting)
+//    if (update->ntimestep % output->every_dump[0] == 0)
+//      badness_stream << update->ntimestep << " " <<  chimes_calculatorKK.get_badness() << endl;
 
     //Compute3Body
     // if (chimes_calculatorKK.poly_orders[1] > 0 || tmp_FP)
@@ -595,8 +596,8 @@ void PairCHIMESKokkos<DeviceType>::operator() (TagPairCHIMESCompute2Body<NEIGHFL
 
   // First, get the single-atom energy contribution
 
-  double energy = 0.0;
-  double stensor[6];
+  KK_FLOAT energy = 0.0;
+  KK_FLOAT stensor[6];
   for (int n = 0; n < 6; n++) stensor[n] = 0;
 
   chimes_calculatorKK.compute_1B(type[i]-1, energy);
@@ -605,7 +606,7 @@ void PairCHIMESKokkos<DeviceType>::operator() (TagPairCHIMESCompute2Body<NEIGHFL
   atmidxlst[0][0] = i;
 
   if (evflag)
-    ev_tally_mb(1, 0, atmidxlst, energy, stensor, ev);
+    ev_tally_mb<NEIGHFLAG>(1, 0, atmidxlst, energy, stensor, ev);
 
   // Now move on to two-body force, stress, and energy
 
@@ -623,8 +624,10 @@ void PairCHIMESKokkos<DeviceType>::operator() (TagPairCHIMESCompute2Body<NEIGHFL
 
     // Get distance using ghost atoms... don't need MIC since we're using ghost atoms
 
+    KK_FLOAT dr[3];
     const KK_FLOAT dist = get_dist(i,j,&dr[0]);
 
+    int typ_idxs_2b[2];
     typ_idxs_2b[0] = d_chimes_type[type[i]-1]; // Type (index) of the current atom... subtract 1 to account for chimesFF vs LAMMPS numbering convention
     typ_idxs_2b[1] = d_chimes_type[type[j]-1];
 
@@ -634,11 +637,12 @@ void PairCHIMESKokkos<DeviceType>::operator() (TagPairCHIMESCompute2Body<NEIGHFL
     // Do the same for stress tensors
     //std::fill(stensor.begin(), stensor.end(), 0.0);
 
-    double energy = 0.0;
-    double stensor[6];
+    KK_FLOAT energy = 0.0;
+    KK_FLOAT force_2b[2*CHDIM];
+    KK_FLOAT stensor[6];
     for (int n = 0; n < 6; n++) stensor[n] = 0;
 
-    //chimes_calculatorKK.compute_2B(dist, dr, typ_idxs_2b, force_2b, stensor, energy, chimes_2btmpKK);      // Auto-updates badness
+    chimes_calculatorKK.compute_2B(dist, dr, typ_idxs_2b, force_2b, stensor, energy, chimes_2btmpKK);      // Auto-updates badness
     
     for (int idx = 0; idx < 3; idx++) {
       a_f(i,idx) += d_force_2b[0*CHDIM+idx];
@@ -656,7 +660,7 @@ void PairCHIMESKokkos<DeviceType>::operator() (TagPairCHIMESCompute2Body<NEIGHFL
     //tmp_dist[0] = dist;
 
     if (evflag)
-      ev_tally_mb(2, 1, atmidxlst, energy, stensor, ev);
+      ev_tally_mb<NEIGHFLAG>(2, 1, atmidxlst, energy, stensor, ev);
   }
 }
 
@@ -689,7 +693,7 @@ void PairCHIMESKokkos<DeviceType>::operator() (TagPairCHIMESCompute3Body<NEIGHFL
   const int j = d_neighborlist_3mers(ii,1);
   const int k = d_neighborlist_3mers(ii,2);
 
-  KK_FLOAT dist_3b[3];
+  KK_FLOAT dist_3b[3], dr_3b[3];
   dist_3b[0] = get_dist(i,j,&dr_3b[0*CHDIM]);
   dist_3b[1] = get_dist(i,k,&dr_3b[1*CHDIM]);
   dist_3b[2] = get_dist(j,k,&dr_3b[2*CHDIM]);
@@ -702,11 +706,12 @@ void PairCHIMESKokkos<DeviceType>::operator() (TagPairCHIMESCompute3Body<NEIGHFL
   //std::fill(force_3b.begin(), force_3b.end(), 0.0);
   //std::fill(stensor.begin(), stensor.end(), 0.0);
 
-  double energy = 0.0;
-  double stensor[6];
+  KK_FLOAT energy = 0.0;
+  KK_FLOAT force_3b[3*CHDIM];
+  KK_FLOAT stensor[6];
   for (int n = 0; n < 6; n++) stensor[n] = 0;
 
-  //chimes_calculatorKK.compute_3B(dist_3b, dr_3b, typ_idxs_3b, force_3b, stensor, energy, chimes_3btmpKK);
+  chimes_calculatorKK.compute_3B(dist_3b, dr_3b, typ_idxs_3b, force_3b, stensor, energy, chimes_3btmpKK);
 
   for (int idx = 0; idx < 3; idx++)
   {
@@ -728,7 +733,7 @@ void PairCHIMESKokkos<DeviceType>::operator() (TagPairCHIMESCompute3Body<NEIGHFL
   }
 
   if (evflag)
-    ev_tally_mb(3, 3, atmidxlst, energy, stensor, ev);
+    ev_tally_mb<NEIGHFLAG>(3, 3, atmidxlst, energy, stensor, ev);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -761,7 +766,7 @@ void PairCHIMESKokkos<DeviceType>::operator() (TagPairCHIMESCompute4Body<NEIGHFL
   const int k = d_neighborlist_4mers(ii,2);
   const int l = d_neighborlist_4mers(ii,3);
 
-  KK_FLOAT dist_4b[6];
+  KK_FLOAT dist_4b[6], dr_4b[6];
   dist_4b[0] = get_dist(i,j,&dr_4b[0*CHDIM]);
   dist_4b[1] = get_dist(i,k,&dr_4b[1*CHDIM]);
   dist_4b[2] = get_dist(i,l,&dr_4b[2*CHDIM]);
@@ -778,11 +783,12 @@ void PairCHIMESKokkos<DeviceType>::operator() (TagPairCHIMESCompute4Body<NEIGHFL
   //std::fill(force_4b.begin(), force_4b.end(), 0.0);
   //std::fill(stensor.begin(), stensor.end(), 0.0);
 
-  double energy = 0.0;
-  double stensor[6];
+  KK_FLOAT energy = 0.0;
+  KK_FLOAT force_4b[4*CHDIM];
+  KK_FLOAT stensor[6];
   for (int n = 0; n < 6; n++) stensor[n] = 0;
 
-  //////chimes_calculatorKK.compute_4B(dist_4b, dr_4b, typ_idxs_4b, force_4b, stensor, energy, chimes_4btmpKK);
+  chimes_calculatorKK.compute_4B(dist_4b, dr_4b, typ_idxs_4b, force_4b, stensor, energy, chimes_4btmpKK);
 
   for (int idx = 0; idx < 3; idx++) {
     a_f(i,idx) += d_force_4b[0*CHDIM+idx];
@@ -809,7 +815,7 @@ void PairCHIMESKokkos<DeviceType>::operator() (TagPairCHIMESCompute4Body<NEIGHFL
   }
 
   if (evflag)
-    ev_tally_mb(4, 6, atmidxlst, energy, stensor, ev);
+    ev_tally_mb<NEIGHFLAG>(4, 6, atmidxlst, energy, stensor, ev);
 }
 
 /* ---------------------------------------------------------------------- */

@@ -431,4 +431,5 @@ void chimesFFKokkos<DeviceType>::set_cheby_polys(typename AT::t_kkfloat_1d &Tn, 
   }
 }
 
+#include "chimesFF_kokkos_impl.h" 
 #endif

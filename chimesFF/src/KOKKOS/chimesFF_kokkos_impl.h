@@ -863,10 +863,3 @@ void chimesFFKokkos<DeviceType>::compute_4B(const KK_FLOAT* dx, const KK_FLOAT* 
   force_scalar_in[4] = force_scalar[4];
   force_scalar_in[5] = force_scalar[5];
 }
-
-/* ---------------------------------------------------------------------- */
-
-template class chimesFFKokkos<LMPDeviceType>;
-#ifdef LMP_KOKKOS_GPU
-template class chimesFFKokkos<LMPHostType>;
-#endif

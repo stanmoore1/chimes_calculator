@@ -29,7 +29,6 @@ PairStyle(chimesFF/kk/host,PairCHIMESKokkos<LMPHostType>);
 
 #include "chimesFF_kokkos.h"
 #include "pair_chimes.h"
-#include "kokkos_base.h"
 
 namespace LAMMPS_NS {
 
